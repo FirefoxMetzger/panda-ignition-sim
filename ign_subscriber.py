@@ -4,7 +4,7 @@ import socket
 import os
 import pwd
 
-class IgnSubscriber(object):
+class IgnSubscriber:
     def __init__(self, topic: str, *, parser = None):
         """
         Initialize a new subscriber for the given topic.
