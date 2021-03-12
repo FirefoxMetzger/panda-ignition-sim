@@ -5,17 +5,62 @@ import os
 import pwd
 
 class IgnSubscriber(object):
-    def __init__(self, topic, *, context=zmq.Context()):
+    def __init__(self, topic: str, *, context : zmq.Context = zmq.Context()):
+        """
+        Initialize a new subscriber for the given topic.
+
+        Creates an object that uses a context manager to subscribe to ign-transport
+        topics and receive messages from it.
+
+        Parameters
+        ----------
+        topic : str
+            The name of the topic to subscribe to as shown by `ign topic -l`.
+        
+        Returns
+        -------
+        self : IgnSubscriber
+            A object that can subscribe to ign-transport within a context manager
+
+        """
         self.socket = context.socket(zmq.SUB)
         self.topic = topic
 
-        # this could also be streamlined by speaking the ign-transport discovery protcol
+        # this could be streamlined by speaking the ign-transport discovery protcol
         host_name = socket.gethostname()
         user_name = pwd.getpwuid(os.getuid())[0]
         self.socket.subscribe(f"@/{host_name}:{user_name}@{topic}")
 
-    def recv(self, *args):
-        return self.socket.recv_multipart(*args)
+    def recv(self, blocking=True, timeout=1000):
+        """
+        Receive a message from the topic
+
+        Parameters
+        ----------
+        blocking : bool
+            If True (default) block until a message is received. If False,
+            raise zmq.ZMQError if no message is available at the time of query.
+        timeout : int
+            Time (in ms) to wait for a message to arrive. If the time is exceeded,
+            an IOError will be raised. Will wait indefinitely if set to `-1`.
+
+        Returns
+        -------
+        msg : Tuple
+            The received message.
+        """
+
+        self.socket.setsockopt(zmq.RCVTIMEO, timeout)
+
+        try:
+            if blocking:
+                msg = self.socket.recv_multipart()
+            else:
+                msg = self.socket.recv_multipart(zmq.NOBLOCK)
+        except zmq.Again:
+            raise IOError(f"Topic {self.topic} did not send a message.")
+
+        return msg
 
     def __enter__(self):
         # weird hack to encourage ign-transport to actually publish camera messages
