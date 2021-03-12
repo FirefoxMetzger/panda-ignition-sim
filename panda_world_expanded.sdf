@@ -1,15 +1,8 @@
 <sdf version='1.7'>
   <world name='panda_world'>
-    <physics name='1ms' type='ignored'>
-      <max_step_size>0.001</max_step_size>
-      <real_time_factor>1</real_time_factor>
-      <real_time_update_rate>1000</real_time_update_rate>
-    </physics>
     <plugin name='ignition::gazebo::systems::Physics' filename='ignition-gazebo-physics-system'/>
-    <plugin name='ignition::gazebo::systems::UserCommands' filename='ignition-gazebo-user-commands-system'/>
-    <plugin name='ignition::gazebo::systems::SceneBroadcaster' filename='ignition-gazebo-scene-broadcaster-system'/>
     <plugin name='ignition::gazebo::systems::Sensors' filename='ignition-gazebo-sensors-system'>
-      <render_engine>ogre</render_engine>
+      <render_engine>ogre2</render_engine>
     </plugin>
     <light name='sun' type='directional'>
       <cast_shadows>1</cast_shadows>
@@ -418,55 +411,11 @@
       <pose>0.794 0 0 0 -0 1.5708</pose>
       <plugin name='__default__' filename='__default__'/>
     </model>
-    <model name='Avengers_Thor_PLlrpYniaeB'>
-      <link name='link_0'>
-        <visual name='visual'>
-          <geometry>
-            <mesh>
-              <uri>file:///home/sebastian/.ignition/fuel/fuel.ignitionrobotics.org/googleresearch/models/avengers_thor_pllrpyniaeb/1/meshes/model.obj</uri>
-            </mesh>
-          </geometry>
-          <plugin name='__default__' filename='__default__'/>
-        </visual>
-        <collision name='collision_0'>
-          <geometry>
-            <mesh>
-              <uri>file:///home/sebastian/.ignition/fuel/fuel.ignitionrobotics.org/googleresearch/models/avengers_thor_pllrpyniaeb/1/meshes/model.obj</uri>
-            </mesh>
-          </geometry>
-        </collision>
-      </link>
-      <pose>1 0.5 1.025 0 -0 0</pose>
-      <plugin name='__default__' filename='__default__'/>
-    </model>
     <model name='camera'>
+      <static>1</static>
       <pose>4 -0 1 0 -0 3.14</pose>
       <link name='link'>
         <pose>0.05 0.05 0.05 0 -0 0</pose>
-        <inertial>
-          <mass>0.1</mass>
-          <inertia>
-            <ixx>0.000166667</ixx>
-            <iyy>0.000166667</iyy>
-            <izz>0.000166667</izz>
-            <ixy>0</ixy>
-            <ixz>0</ixz>
-            <iyz>0</iyz>
-          </inertia>
-        </inertial>
-        <collision name='collision'>
-          <geometry>
-            <box>
-              <size>0.1 0.1 0.1</size>
-            </box>
-          </geometry>
-          <surface>
-            <friction>
-              <ode/>
-            </friction>
-            <contact/>
-          </surface>
-        </collision>
         <visual name='visual'>
           <geometry>
             <box>
