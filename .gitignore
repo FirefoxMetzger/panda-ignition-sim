@@ -1,0 +1,6 @@
+ignition/
+.vscode/
+__pycache__/
+
+*.png
+*.jpg
