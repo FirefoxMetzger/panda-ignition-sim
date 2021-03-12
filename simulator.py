@@ -47,10 +47,7 @@ with IgnSubscriber("/clock") as clock_topic, \
     for sim_step in range(1000):
         gazebo.run()
 
-        # sleep to await messages for testing
-        # time.sleep(0.04)
-
-        # get the current clock (published each step)
+        # get the current time (published each step)
         zmq_msg = clock_topic.recv()
         clock_msg = Clock()
         clock_msg.ParseFromString(zmq_msg[2])
