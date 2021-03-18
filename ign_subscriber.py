@@ -87,6 +87,10 @@ class IgnSubscriber:
         # ign-transport discovery protocol
         result = subprocess.check_output(f"ign topic -i -t {self.topic}", shell=True)
         self.address = result.decode("utf-8").split("\n")[1].split(",")[0].replace("\t", "").replace(" ", "")
+
+        if not self.address:
+            raise IOError(f"Could not identify socket for {self.topic}.")
+
         self.socket.connect(self.address)
 
         return self
