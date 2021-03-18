@@ -89,6 +89,7 @@ class IgnSubscriber:
         self.address = result.decode("utf-8").split("\n")[1].split(",")[0].replace("\t", "").replace(" ", "")
 
         if not self.address:
+            self.echo_subscriber.terminate()
             raise IOError(f"Could not identify socket for {self.topic}.")
 
         self.socket.connect(self.address)
