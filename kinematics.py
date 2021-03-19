@@ -59,11 +59,13 @@ def transform(new_frame: np.array):
         [-np.sin(gamma), np.cos(gamma), 0],
         [0, 0, 1]
     ])
+    
+    # Note: apply inverse rotation
+    rot = np.matmul(rot_z, np.matmul(rot_y, rot_x))
 
     transform = np.eye(4)
-    # Note: apply inverse rotation
-    transform[:3, :3] = np.matmul(rot_z, np.matmul(rot_y, rot_x))
-    transform[:3, 3] = - new_frame[:3]
+    transform[:3, :3] = rot
+    transform[:3, 3] = - np.matmul(rot, new_frame[:3])
 
     return transform
 
@@ -193,6 +195,7 @@ def homogenize(cartesian_vector: np.array):
         The vector in homogenious coordinates.
 
     """
+    cartesian_vector = np.asarray(cartesian_vector)
 
     shape = cartesian_vector.shape
     homogenious_vector = np.ones((*shape[:-1], shape[-1] + 1))
