@@ -4,6 +4,7 @@ A collection of parsers used to deserialize messages used in the simulator
 
 from ignition.msgs.image_pb2 import Image
 from ignition.msgs.clock_pb2 import Clock
+from ignition.msgs.camera_info_pb2 import CameraInfo
 from dataclasses import dataclass
 import numpy as np
 
@@ -28,3 +29,10 @@ def camera_parser(msg):
     img_time = image_msg.header.stamp.sec + image_msg.header.stamp.nsec*1e-9
 
     return ImageMessage(image=im,time=img_time)
+
+
+def camera_info_parser(msg):
+    decoded_msg = CameraInfo()
+    decoded_msg.ParseFromString(msg[2])
+
+    return decoded_msg
