@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def transform(new_frame: np.array):
+def transform(new_frame: np.array) -> np.array:
     """
     Compute the homogeneous transformation matrix from the current coordinate
     system into a new coordinate system.
@@ -70,7 +70,7 @@ def transform(new_frame: np.array):
     return transform
 
 
-def inverseTransform(old_frame):
+def inverseTransform(old_frame) -> np.array:
     """
     Compute the homogeneous transformation matrix from the current coordinate
     system into the old coordinate system.
@@ -134,7 +134,7 @@ def inverseTransform(old_frame):
     return transform
 
 
-def transformBetween(old_frame: np.array, new_frame: np.array):
+def transformBetween(old_frame: np.array, new_frame: np.array) -> np.array:
     """
     Compute the homogeneous transformation matrix between two frames.
 
@@ -180,7 +180,7 @@ def transformBetween(old_frame: np.array, new_frame: np.array):
     return np.matmul(transform(new_frame), inverseTransform(old_frame))
 
 
-def homogenize(cartesian_vector: np.array):
+def homogenize(cartesian_vector: np.array) -> np.array:
     """
     Convert a vector from cartesian coordinates into homogeneous coordinates.
 
@@ -203,7 +203,7 @@ def homogenize(cartesian_vector: np.array):
     return homogeneous_vector
 
 
-def cartesianize(homogeneous_vector: np.array):
+def cartesianize(homogeneous_vector: np.array) -> np.array:
     """
     Convert a vector from homogeneous coordinates to cartesian coordinates.
 
