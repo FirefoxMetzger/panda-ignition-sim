@@ -3,11 +3,11 @@ import numpy as np
 
 def transform(new_frame: np.array):
     """
-    Compute the homogenious transformation matrix from the current coordinate
+    Compute the homogeneous transformation matrix from the current coordinate
     system into a new coordinate system.
 
     Given the pose of the new reference frame ``new_frame`` in the current
-    reference frame, compute the homogenious transformation matrix from the
+    reference frame, compute the homogeneous transformation matrix from the
     current reference frame into the new reference frame.
     ``transform(new_frame)`` can, for example, be used to get the transformation
     from the corrdinate frame of the current link in a kinematic chain to the
@@ -26,7 +26,7 @@ def transform(new_frame: np.array):
     Returns
     -------
     transformation_matrix : np.ndarray
-        A 4x4 matrix representing the homogenious transformation.
+        A 4x4 matrix representing the homogeneous transformation.
 
 
     Notes
@@ -72,11 +72,11 @@ def transform(new_frame: np.array):
 
 def inverseTransform(old_frame):
     """
-    Compute the homogenious transformation matrix from the current coordinate
+    Compute the homogeneous transformation matrix from the current coordinate
     system into the old coordinate system.
 
     Given the pose of the current reference frame in the old reference frame
-    ``old_frame``, compute the homogenious transformation matrix from the new
+    ``old_frame``, compute the homogeneous transformation matrix from the new
     reference frame into the old reference frame. For example,
     ``inverseTransform(camera_frame)`` can, be used to compute the
     transformation from a camera's coordinate frame to the world's coordinate
@@ -93,7 +93,7 @@ def inverseTransform(old_frame):
     Returns
     -------
     transformation_matrix : np.ndarray
-        A 4x4 matrix representing the homogenious transformation.
+        A 4x4 matrix representing the homogeneous transformation.
 
 
     Notes
@@ -136,7 +136,7 @@ def inverseTransform(old_frame):
 
 def transformBetween(old_frame: np.array, new_frame: np.array):
     """
-    Compute the homogenious transformation matrix between two frames.
+    Compute the homogeneous transformation matrix between two frames.
 
     ``transformBetween(old_frame, new_frame)`` computes the
     transformation from the corrdinate system with pose ``old_frame`` to
@@ -161,7 +161,7 @@ def transformBetween(old_frame: np.array, new_frame: np.array):
     Returns
     -------
     transformation_matrix : np.ndarray
-        A 4x4 matrix representing the homogenious transformation.
+        A 4x4 matrix representing the homogeneous transformation.
 
     Notes
     -----
@@ -182,7 +182,7 @@ def transformBetween(old_frame: np.array, new_frame: np.array):
 
 def homogenize(cartesian_vector: np.array):
     """
-    Convert a vector from cartesian coordinates into homogenious coordinates.
+    Convert a vector from cartesian coordinates into homogeneous coordinates.
 
     Parameters
     ----------
@@ -191,26 +191,26 @@ def homogenize(cartesian_vector: np.array):
 
     Returns
     -------
-    homogenious_vector: np.array
-        The vector in homogenious coordinates.
+    homogeneous_vector: np.array
+        The vector in homogeneous coordinates.
 
     """
     cartesian_vector = np.asarray(cartesian_vector)
 
     shape = cartesian_vector.shape
-    homogenious_vector = np.ones((*shape[:-1], shape[-1] + 1))
-    homogenious_vector[..., :-1] = cartesian_vector
-    return homogenious_vector
+    homogeneous_vector = np.ones((*shape[:-1], shape[-1] + 1))
+    homogeneous_vector[..., :-1] = cartesian_vector
+    return homogeneous_vector
 
 
-def cartesianize(homogenious_vector: np.array):
+def cartesianize(homogeneous_vector: np.array):
     """
-    Convert a vector from homogenious coordinates to cartesian coordinates.
+    Convert a vector from homogeneous coordinates to cartesian coordinates.
 
     Parameters
     ----------
-    homogenious_vector: np.array
-        The vector in homogenious coordinates.
+    homogeneous_vector: np.array
+        The vector in homogeneous coordinates.
 
     Returns
     -------
@@ -219,4 +219,4 @@ def cartesianize(homogenious_vector: np.array):
 
     """
 
-    return homogenious_vector[..., :-1] / homogenious_vector[..., -1]
+    return homogeneous_vector[..., :-1] / homogeneous_vector[..., -1]
