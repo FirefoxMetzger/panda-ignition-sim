@@ -2,7 +2,7 @@
 A collection of parsers used to deserialize messages used in the simulator
 """
 
-from ropy.ignition.msgs import Image, Clock, CameraInfo
+from ropy.ignition.messages import Image, Clock, CameraInfo
 from dataclasses import dataclass
 import numpy as np
 
