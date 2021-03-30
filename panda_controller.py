@@ -7,22 +7,29 @@ from scipy.spatial.transform import Rotation as R
 from ropy.trajectory import linear_trajectory
 import numpy as np
 
+
 class LinearJointSpacePlanner:
     def __init__(self, panda, control_frequency=0.001):
         # Initialize Panda in Ignition
         self.panda = panda
         assert panda.set_controller_period(period=control_frequency)
-        assert panda.get_joint(joint_name="panda_finger_joint1").to_gazebo().set_max_generalized_force(
-            max_force=500.0
+        assert (
+            panda.get_joint(joint_name="panda_finger_joint1")
+            .to_gazebo()
+            .set_max_generalized_force(max_force=500.0)
         )
-        assert panda.get_joint(joint_name="panda_finger_joint2").to_gazebo().set_max_generalized_force(
-            max_force=500.0
+        assert (
+            panda.get_joint(joint_name="panda_finger_joint2")
+            .to_gazebo()
+            .set_max_generalized_force(max_force=500.0)
         )
 
         # Initialize IK
 
         ik_joints = [
-            j.name() for j in panda.joints() if j.type is not scenario_core.JointType_fixed
+            j.name()
+            for j in panda.joints()
+            if j.type is not scenario_core.JointType_fixed
         ]
         ik = inverse_kinematics_nlp.InverseKinematicsNLP(
             urdf_filename=panda.get_model_file(),
@@ -51,7 +58,6 @@ class LinearJointSpacePlanner:
         )
         self.ik = ik
 
-
     def solve_ik(self, target_position: np.ndarray) -> np.ndarray:
 
         quat_xyzw = R.from_euler(seq="y", angles=90, degrees=True).as_quat()
@@ -72,12 +78,15 @@ class LinearJointSpacePlanner:
         keyframes_jointspace = np.empty(shape=(keyframes.shape[0], 9))
         for idx, keyframe in enumerate(keyframes):
             keyframes_jointspace[idx] = self.solve_ik(keyframe)
-        return linear_trajectory(t, keyframes_jointspace, t_control=t_key, t_min=t_begin, t_max=t_end)
-        
+        return linear_trajectory(
+            t, keyframes_jointspace, t_control=t_key, t_min=t_begin, t_max=t_end
+        )
 
 
 class MotionPlanner:
-    def plan(self, t, keyframes, *, t_key=None, t_begin=0, t_end=1, derivatives=3, **kwargs):
+    def plan(
+        self, t, keyframes, *, t_key=None, t_begin=0, t_end=1, derivatives=3, **kwargs
+    ):
         """Plans a motion through keyframes represented by points at times t.
 
         Parameters

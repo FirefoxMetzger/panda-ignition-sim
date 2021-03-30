@@ -103,7 +103,8 @@ item_list = [
     for url in urls
 ]
 
-def spawn_cube(position, velocity=np.array((0,0,3)), idx=0):
+
+def spawn_cube(position, velocity=np.array((0, 0, 3)), idx=0):
     # Get a unique name
     model_name = gym_ignition.utils.scenario.get_unique_model_name(
         world=world, model_name="cube"
@@ -124,7 +125,7 @@ def spawn_cube(position, velocity=np.array((0,0,3)), idx=0):
 # --- end define placeable area ---
 
 time.sleep(6)
-writer = iio.get_writer('my_video.mp4', format='FFMPEG', mode='I', fps=30)
+writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
 fig, ax = plt.subplots(1)
 counter = -1
 with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscriber(
@@ -159,14 +160,14 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             assert sim_time == img_msg.time
 
         if sim_step % 500 == 0:
-            eff_pos = end_effector.position() + np.array((0,0,0.05))
+            eff_pos = end_effector.position() + np.array((0, 0, 0.05))
             vec = np.random.randn(3, 1)
             vec[2] = abs(vec[2])
             vec[0] = abs(vec[0])
             vec /= np.linalg.norm(vec, axis=0)
             vec = vec.ravel()
             cube_pos = eff_pos + vec
-            cube_vel = - vec * 11 # make sure it is hurled at the robot
+            cube_vel = -vec * 11  # make sure it is hurled at the robot
             counter += 1
             spawn_cube(cube_pos, cube_vel, idx=counter)
 
