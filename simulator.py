@@ -5,7 +5,6 @@ from gym_ignition.rbd import conversions
 from gym_ignition.context.gazebo import controllers
 import gym_ignition
 
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
@@ -31,6 +30,7 @@ world = gazebo.get_world()
 panda = gym_ignition_environments.models.panda.Panda(
     world=world, position=[0.2, 0, 1.025]
 )
+panda.to_gazebo().enable_self_collisions(True)
 end_effector = panda.get_link("end_effector_frame")
 gazebo.gui()
 gazebo.run(paused=True)  # needs to be called before controller initialization
@@ -50,6 +50,9 @@ assert panda.set_joint_position_targets(panda.joint_positions())
 assert panda.set_joint_velocity_targets(panda.joint_velocities())
 assert panda.set_joint_acceleration_targets(panda.joint_accelerations())
 home_position = np.array(end_effector.position())
+home_orientation = np.array(end_effector.orientation())
+home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))
+home_position_joints = panda.joint_positions()
 
 panda_ctrl = LinearJointSpacePlanner(panda, control_frequency=gazebo.step_size())
 
@@ -76,7 +79,7 @@ camera_frame_world = np.stack((cam_pos_world, cam_ori_world)).ravel()
 cam_extrinsic = rtf.transform(camera_frame_world)
 # --- end initialize camera projection ---
 
-# --- begin define placeable area ---
+# --- initialize cube spawner ---
 center = world.get_model("table2").get_link("link").position() + np.array(
     (-0.13, 0, 1.015)
 )
@@ -98,7 +101,7 @@ def point_on_table():
     return center + np.random.rand(3) * 2 * half_extent - half_extent
 
 
-def spawn_cube(position, velocity=np.array((0, 0, 0)), idx=0):
+def spawn_cube(position, orientation=(1, 0, 0, 0), velocity=np.array((0, 0, 0)), idx=0):
     # Get a unique name
     model_name = gym_ignition.utils.scenario.get_unique_model_name(
         world=world, model_name="cube"
@@ -109,7 +112,7 @@ def spawn_cube(position, velocity=np.array((0, 0, 0)), idx=0):
 
     # Insert the model
     assert world.insert_model(
-        model, scenario_core.Pose(position, [1.0, 0, 0, 0.274]), model_name
+        model, scenario_core.Pose(position, orientation), model_name
     )
 
     cube = world.get_model(model_name)
@@ -119,31 +122,32 @@ def spawn_cube(position, velocity=np.array((0, 0, 0)), idx=0):
     return cube
 
 
-# --- end define placeable area ---
+# --- end initialize cube spawner ---
+
+# record video of the simulation
+writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
 
 time.sleep(3)
-writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
+
 fig, ax = plt.subplots(1)
 
 num_cubes = 6
-cube_positions = list()
+cube_orientations = list()
 cubes = list()
 for idx in range(num_cubes):
     pos = point_on_table() + np.array((0, 0, 0.025))
-    cubes.append(spawn_cube(pos, idx=idx))
-    cube_positions.append(pos)
+    angle = random.random() * np.pi/8
+    ori = (1, 0, 0, angle)
+    cubes.append(spawn_cube(pos, orientation=ori, idx=idx))
+    cube_orientations.append(angle)
 
 
 with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscriber(
     "/camera", parser=camera_parser
 ) as camera_topic:
-    # Fix: the first step doesn't generate messages.
-    # I don't exactly know why; I assume it has
-    # to do with subscriptions being updated at the end
-    # of the sim loop instead of the beginning?
     gazebo.run(paused=True)
 
-    num_targets = 3
+    num_targets = 20
     total_steps = 2000 * num_targets
     for sim_step in range(total_steps):
         # get the current time (published each step)
@@ -166,25 +170,28 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             assert sim_time == img_msg.time
 
         if sim_step % 2000 == 0:
-            world_target = random.choice(cube_positions) + np.array((0, 0, 0.03))
+            # reset the robot
+            panda.to_gazebo().reset_joint_positions(home_position_joints)
+            panda.to_gazebo().reset_joint_velocities([0,0,0,0,0,0,0,0,0])
 
-            t = np.arange(sim_step + 1, sim_step + 1001)
+            cube_idx = random.randint(0, num_cubes-1)
+            cube = cubes[cube_idx]
+            pos = np.array(cube.base_position())
+            ori = R.from_quat(np.array(cube.base_orientation())[[1, 2, 3, 0]])
+
+            world_target = pos + np.array((0, 0, 0.055))
+            world_ori = R.from_euler(seq="zy", angles=(cube_orientations[idx], np.pi/2)) #* ori
+            world_ori = world_ori.as_quat()
+            world_pose = np.hstack((world_target, world_ori))
+
+            t = np.arange(sim_step + 1, sim_step + 2001)
             move_to_goal = panda_ctrl.plan(
                 t,
-                [home_position, world_target],
+                [home_pose, world_pose],
                 t_begin=sim_step,
-                t_end=sim_step + 1000,
-            )
-            t = np.arange(sim_step + 1001, sim_step + 2001)
-            move_from_goal = panda_ctrl.plan(
-                t,
-                [world_target, home_position],
-                t_begin=sim_step + 1000,
                 t_end=sim_step + 2000,
             )
-            full_trajectory = np.empty((2000, 9))
-            full_trajectory[:1000] = move_to_goal
-            full_trajectory[1000:] = move_from_goal
+            full_trajectory = move_to_goal
             plan_step = sim_step
 
             # visualize target
@@ -194,14 +201,16 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             in_px = rtf.cartesianize(in_px_hom)
             ax.add_patch(Circle(in_px, radius=10, color="red"))
 
+        # panda.set_joint_position_targets(
+        #     full_trajectory[sim_step - plan_step], ik_joints
+        # )
         panda.set_joint_position_targets(
-            full_trajectory[sim_step - plan_step], ik_joints
+            full_trajectory[-1], ik_joints
         )
 
         gazebo.run()
 
 writer.close()
-
 
 # visualize the trajectory
 ax.imshow(img_msg.image)
