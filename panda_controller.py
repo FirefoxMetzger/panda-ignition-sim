@@ -58,14 +58,11 @@ class LinearJointSpacePlanner:
         )
         self.ik = ik
 
-    def solve_ik(self, target_position: np.ndarray) -> np.ndarray:
-
-        quat_xyzw = R.from_euler(seq="y", angles=90, degrees=True).as_quat()
-
+    def solve_ik(self, target_position: np.ndarray, target_orientation: np.array) -> np.ndarray:
         self.ik.update_transform_target(
             target_name=self.ik.get_active_target_names()[0],
             position=target_position,
-            quaternion=conversions.Quaternion.to_wxyz(xyzw=quat_xyzw),
+            quaternion=target_orientation,
         )
 
         # Run the IK
@@ -75,9 +72,14 @@ class LinearJointSpacePlanner:
 
     def plan(self, t, keyframes, *, t_key=None, t_begin=0, t_end=1):
         keyframes = np.asarray(keyframes)
+        positions = keyframes[:, :3]
+        orientations = keyframes[:, 3:]
+        orientations = orientations[:, [3, 0, 1, 2]]  # xyzw -> wxyz
+
         keyframes_jointspace = np.empty(shape=(keyframes.shape[0], 9))
-        for idx, keyframe in enumerate(keyframes):
-            keyframes_jointspace[idx] = self.solve_ik(keyframe)
+        for idx, (pos, ori) in enumerate(zip(positions, orientations)):
+            keyframes_jointspace[idx] = self.solve_ik(pos, ori)
+
         return linear_trajectory(
             t, keyframes_jointspace, t_control=t_key, t_min=t_begin, t_max=t_end
         )
