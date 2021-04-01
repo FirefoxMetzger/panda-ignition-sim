@@ -5,7 +5,7 @@ from itertools import chain
 
 
 from scipy.spatial.transform import Rotation as R
-from ropy.trajectory import linear_trajectory
+from ropy.trajectory import spline_trajectory, linear_trajectory
 import numpy as np
 
 
@@ -83,16 +83,38 @@ class LinearJointSpacePlanner:
         all_times = np.unique(all_times)
         all_times.sort()
 
-        positions = linear_trajectory(all_times, pose_key[0], t_control=t_key[0], t_min=t_begin, t_max=t_end)
-        orientations = linear_trajectory(all_times, pose_key[1], t_control=t_key[1], t_min=t_begin, t_max=t_end)
+        positions = spline_trajectory(
+            all_times, pose_key[0], t_control=t_key[0], t_min=t_begin, t_max=t_end
+        )
+        orientations = linear_trajectory(
+            all_times, pose_key[1], t_control=t_key[1], t_min=t_begin, t_max=t_end
+        )
 
         keyframes_jointspace = np.empty(shape=(len(all_times), 9))
         for idx, (pos, ori) in enumerate(zip(positions, orientations)):
             keyframes_jointspace[idx] = self.solve_ik(pos, ori)
 
-        return linear_trajectory(
+        pose = spline_trajectory(
             t, keyframes_jointspace, t_control=all_times, t_min=t_begin, t_max=t_end
         )
+        twist = spline_trajectory(
+            t,
+            keyframes_jointspace,
+            t_control=all_times,
+            t_min=t_begin,
+            t_max=t_end,
+            derivative=1,
+        )
+        wrench = spline_trajectory(
+            t,
+            keyframes_jointspace,
+            t_control=all_times,
+            t_min=t_begin,
+            t_max=t_end,
+            derivative=2,
+        )
+
+        return np.stack((pose, twist, wrench), axis=-1)
 
 
 class MotionPlanner:

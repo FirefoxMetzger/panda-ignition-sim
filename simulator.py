@@ -116,8 +116,9 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
 ) as camera_topic:
     gazebo.run(paused=True)
 
-    num_targets = 20
-    total_steps = 2000 * num_targets
+    num_targets = 3
+    trajectory_duration = 5000
+    total_steps = trajectory_duration * num_targets
     for sim_step in range(total_steps):
         # get the current time (published each step)
         sim_time = clock_topic.recv()
@@ -138,10 +139,12 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             # verify that image message and simulator are in sync
             assert sim_time == img_msg.time
 
-        if sim_step % 2000 == 0:
+        if sim_step == 0 or np.allclose(end_effector.position(), world_target, atol=0.01):
             # reset the robot
             panda.to_gazebo().reset_joint_positions(home_position_joints)
             panda.to_gazebo().reset_joint_velocities([0,0,0,0,0,0,0,0,0])
+            panda.set_joint_position_targets(home_position_joints)
+            panda.set_joint_velocity_targets([0,0,0,0,0,0,0,0,0])
 
             cube_idx = random.randint(0, num_cubes-1)
             cube = cubes[cube_idx]
@@ -149,22 +152,21 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             ori = R.from_quat(np.array(cube.base_orientation())[[1, 2, 3, 0]])
 
             world_target = pos + np.array((0, 0, 0.055))
-            pos_trajectory = generators.sample_trajectory(home_position, world_target, env, num_control=5)
+            pos_trajectory = generators.sample_trajectory(home_position, world_target, env, num_control=2)
             pos_trajectory[1:-1, :] += panda.base_position()
-            # import pdb; pdb.set_trace()
 
             world_ori = R.from_euler(seq="y", angles=(np.pi/2)) #* ori
             world_ori = world_ori.as_quat()[[3, 0, 1, 2]]
             ori_trajectory = (home_orientation, world_ori)
 
-            t = np.arange(sim_step + 1, sim_step + 2001)
-            move_to_goal = panda_ctrl.plan(
+            t = np.arange(sim_step + 1, sim_step + trajectory_duration + 1)
+            trajectory = panda_ctrl.plan(
                 t,
                 [pos_trajectory, ori_trajectory],
                 t_begin=sim_step,
-                t_end=sim_step + 2000,
+                t_end=sim_step + trajectory_duration,
             )
-            full_trajectory = move_to_goal
+            full_trajectory = trajectory
             plan_step = sim_step
 
             # visualize target
@@ -174,12 +176,14 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             in_px = rtf.cartesianize(in_px_hom)
             ax.add_patch(Circle(in_px, radius=10, color="red"))
 
+        time = min(trajectory_duration-1, sim_step - plan_step)
+
         panda.set_joint_position_targets(
-            full_trajectory[sim_step - plan_step], ik_joints
+            full_trajectory[time, :, 0], ik_joints
         )
-        # panda.set_joint_position_targets(
-        #     full_trajectory[-1], ik_joints
-        # )
+        panda.set_joint_velocity_targets(
+            full_trajectory[time, :, 1], ik_joints
+        )
 
         gazebo.run()
 
