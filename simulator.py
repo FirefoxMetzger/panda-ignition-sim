@@ -16,6 +16,7 @@ from parsers import camera_parser, clock_parser
 
 from panda_controller import LinearJointSpacePlanner
 import imageio as iio
+import generators
 
 import time
 import random
@@ -80,48 +81,21 @@ cam_extrinsic = rtf.transform(camera_frame_world)
 # --- end initialize camera projection ---
 
 # --- initialize cube spawner ---
-center = world.get_model("table2").get_link("link").position() + np.array(
-    (-0.13, 0, 1.015)
-)
-half_extent = np.array((0.25, 0.5, 0))
-
 with open("./sdf/cube_template.sdf.in", "r") as file:
     cube_template = file.read()
 
-color_values = [
-    ".6 .75 .3 1",
-    ".25 .56 .99 1",
-    ".43 .84 .85 1",
-    ".98 .43 .27 1",
-    ".94 .82 .79 1",
-]
-
-
-def point_on_table():
-    return center + np.random.rand(3) * 2 * half_extent - half_extent
-
-
-def spawn_cube(position, orientation=(1, 0, 0, 0), velocity=np.array((0, 0, 0)), idx=0):
-    # Get a unique name
+def spawn_cube(cube):
+    model = cube_template.format(diffuse=cube.color, ambient=cube.color)
     model_name = gym_ignition.utils.scenario.get_unique_model_name(
-        world=world, model_name="cube"
+        world=world, model_name=cube.name
     )
 
-    color = color_values[idx % len(color_values)]
-    model = cube_template.format(diffuse=color, ambient=color)
-
-    # Insert the model
+    pos = cube.position + panda.base_position()
     assert world.insert_model(
-        model, scenario_core.Pose(position, orientation), model_name
+        model, scenario_core.Pose(pos, cube.orientation), model_name
     )
 
-    cube = world.get_model(model_name)
-    velocity = scenario_core.Array3d(velocity.tolist())
-    assert cube.to_gazebo().reset_base_world_linear_velocity(velocity)
-
-    return cube
-
-
+    return world.get_model(model_name)
 # --- end initialize cube spawner ---
 
 # record video of the simulation
@@ -132,15 +106,10 @@ time.sleep(3)
 fig, ax = plt.subplots(1)
 
 num_cubes = 6
-cube_orientations = list()
+env = generators.generate_environment(num_cubes)
 cubes = list()
-for idx in range(num_cubes):
-    pos = point_on_table() + np.array((0, 0, 0.025))
-    angle = random.random() * np.pi/8
-    ori = (1, 0, 0, angle)
-    cubes.append(spawn_cube(pos, orientation=ori, idx=idx))
-    cube_orientations.append(angle)
-
+for cube in env.cubes:
+    cubes.append(spawn_cube(cube))
 
 with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscriber(
     "/camera", parser=camera_parser
@@ -180,14 +149,18 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             ori = R.from_quat(np.array(cube.base_orientation())[[1, 2, 3, 0]])
 
             world_target = pos + np.array((0, 0, 0.055))
-            world_ori = R.from_euler(seq="zy", angles=(cube_orientations[idx], np.pi/2)) #* ori
-            world_ori = world_ori.as_quat()
-            world_pose = np.hstack((world_target, world_ori))
+            pos_trajectory = generators.sample_trajectory(home_position, world_target, env, num_control=5)
+            pos_trajectory[1:-1, :] += panda.base_position()
+            # import pdb; pdb.set_trace()
+
+            world_ori = R.from_euler(seq="y", angles=(np.pi/2)) #* ori
+            world_ori = world_ori.as_quat()[[3, 0, 1, 2]]
+            ori_trajectory = (home_orientation, world_ori)
 
             t = np.arange(sim_step + 1, sim_step + 2001)
             move_to_goal = panda_ctrl.plan(
                 t,
-                [home_pose, world_pose],
+                [pos_trajectory, ori_trajectory],
                 t_begin=sim_step,
                 t_end=sim_step + 2000,
             )
@@ -201,12 +174,12 @@ with ign.Subscriber("/clock", parser=clock_parser) as clock_topic, ign.Subscribe
             in_px = rtf.cartesianize(in_px_hom)
             ax.add_patch(Circle(in_px, radius=10, color="red"))
 
-        # panda.set_joint_position_targets(
-        #     full_trajectory[sim_step - plan_step], ik_joints
-        # )
         panda.set_joint_position_targets(
-            full_trajectory[-1], ik_joints
+            full_trajectory[sim_step - plan_step], ik_joints
         )
+        # panda.set_joint_position_targets(
+        #     full_trajectory[-1], ik_joints
+        # )
 
         gazebo.run()
 

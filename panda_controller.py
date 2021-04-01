@@ -1,6 +1,7 @@
 from gym_ignition.rbd.idyntree import inverse_kinematics_nlp
 from scenario import core as scenario_core
 from gym_ignition.rbd import conversions
+from itertools import chain
 
 
 from scipy.spatial.transform import Rotation as R
@@ -58,7 +59,9 @@ class LinearJointSpacePlanner:
         )
         self.ik = ik
 
-    def solve_ik(self, target_position: np.ndarray, target_orientation: np.array) -> np.ndarray:
+    def solve_ik(
+        self, target_position: np.ndarray, target_orientation: np.array
+    ) -> np.ndarray:
         self.ik.update_transform_target(
             target_name=self.ik.get_active_target_names()[0],
             position=target_position,
@@ -70,18 +73,25 @@ class LinearJointSpacePlanner:
 
         return self.ik.get_reduced_solution().joint_configuration
 
-    def plan(self, t, keyframes, *, t_key=None, t_begin=0, t_end=1):
-        keyframes = np.asarray(keyframes)
-        positions = keyframes[:, :3]
-        orientations = keyframes[:, 3:]
-        orientations = orientations[:, [3, 0, 1, 2]]  # xyzw -> wxyz
+    def plan(self, t, pose_key, *, t_key=None, t_begin=0, t_end=1):
+        if t_key is None:
+            t_key = [
+                np.linspace(t_begin, t_end, len(p), dtype=np.float_) for p in pose_key
+            ]
 
-        keyframes_jointspace = np.empty(shape=(keyframes.shape[0], 9))
+        all_times = np.array([t for t in chain.from_iterable(t_key)])
+        all_times = np.unique(all_times)
+        all_times.sort()
+
+        positions = linear_trajectory(all_times, pose_key[0], t_control=t_key[0], t_min=t_begin, t_max=t_end)
+        orientations = linear_trajectory(all_times, pose_key[1], t_control=t_key[1], t_min=t_begin, t_max=t_end)
+
+        keyframes_jointspace = np.empty(shape=(len(all_times), 9))
         for idx, (pos, ori) in enumerate(zip(positions, orientations)):
             keyframes_jointspace[idx] = self.solve_ik(pos, ori)
 
         return linear_trajectory(
-            t, keyframes_jointspace, t_control=t_key, t_min=t_begin, t_max=t_end
+            t, keyframes_jointspace, t_control=all_times, t_min=t_begin, t_max=t_end
         )
 
 
@@ -112,10 +122,11 @@ class MotionPlanner:
             The end time of the motion. The end point will be
             ``pos=plan(t_end)``.
         derivatives : int, optional
-            The number of derivatives to compute for the motion. The default is 3,
-            which will compute (position, velocity, acceleration, jerk). The derivatives
-            are stacked along the last axis of the returned array, e.g.,
-            ``acceleration = plan(t, ...)[..., 2]``.
+            The number of derivatives to compute for the motion. The default is
+            3. The derivatives are stacked along the last axis of the returned
+            array. When planing for positions only, ths default will compute
+            (position, velocity, acceleration, jerk) and produce a result where,
+            e.g., ``acceleration = plan(t, ...)[..., 2]``.
         **kwargs : any
             Other, non-standard keyword arguments
         """
