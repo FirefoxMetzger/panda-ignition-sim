@@ -13,6 +13,7 @@ import ropy.ignition as ign
 import ropy.transform as rtf
 import ropy.trajectory as rtj
 from parsers import camera_parser, clock_parser
+from dataclasses import dataclass
 
 from panda_controller import LinearJointSpacePlanner
 import imageio as iio
@@ -21,7 +22,7 @@ import generators
 import time
 import random
 
-from numpy.typing import ArrayLike
+import numpy.typing as npt
 from typing import Tuple
 
 
@@ -34,67 +35,46 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
     def world(self):
         return self.get_world()
 
+    def initialize(self):
+        raise NotImplementedError(
+            "Do not initialize the simulator manually. "
+            "Use 'with LegibiltySimulator(...) as' instead."
+        )
+
     def __enter__(self):
         assert self.insert_world_from_sdf("./sdf/environment.sdf")
-        self.initialize()
+        super().initialize()
 
-        world = self.world
+        try:
 
-        # ---- initialize panda ----
-        # spawn
-        panda = gym_ignition_environments.models.panda.Panda(
-            world=world, position=[0.2, 0, 1.025]
-        )
-        panda.to_gazebo().enable_self_collisions(True)
-        end_effector = panda.get_link("end_effector_frame")
-        self.run(paused=True)  # needs to be called before controller initialization
+            world = self.world
 
-        # Insert the ComputedTorqueFixedBase controller
-        assert panda.to_gazebo().insert_model_plugin(
-            *controllers.ComputedTorqueFixedBase(
-                kp=[100.0] * (panda.dofs() - 2) + [10000.0] * 2,
-                ki=[0.0] * panda.dofs(),
-                kd=[17.5] * (panda.dofs() - 2) + [100.0] * 2,
-                urdf=panda.get_model_file(),
-                joints=panda.joint_names(),
-            ).args()
-        )
+            # --- initialize camera projection ---
+            camera = self.get_world().get_model("camera").get_link("link")
+            camera_frequency = 30  # Hz
+            steps_per_frame = round((1 / self.step_size()) / camera_frequency)
 
-        assert panda.set_joint_position_targets(panda.joint_positions())
-        assert panda.set_joint_velocity_targets(panda.joint_velocities())
-        assert panda.set_joint_acceleration_targets(panda.joint_accelerations())
-        home_position = np.array(end_effector.position())
-        home_orientation = np.array(end_effector.orientation())
-        home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))
-        home_position_joints = panda.joint_positions()
+            # intrinsic matrix
+            cam_intrinsic = rtf.perspective_frustum(
+                hfov=1.13446, image_shape=(1080, 1920)
+            )
 
-        panda_ctrl = LinearJointSpacePlanner(
-            panda, control_frequency=self.step_size()
-        )
+            # extrinsic matrix
+            cam_pos_world = np.array(camera.position())
+            cam_ori_world_quat = np.array(camera.orientation())[[1, 2, 3, 0]]
+            cam_ori_world = R.from_quat(cam_ori_world_quat).as_euler("xyz")
+            camera_frame_world = np.stack((cam_pos_world, cam_ori_world)).ravel()
+            cam_extrinsic = rtf.transform(camera_frame_world)
+            # --- end initialize camera projection ---
 
-        ik_joints = [
-            j.name()
-            for j in panda.joints()
-            if j.type is not scenario_core.JointType_fixed
-        ]
-
-        # --- end initialize panda ---
-
-        # --- initialize camera projection ---
-        camera = self.get_world().get_model("camera").get_link("link")
-        camera_frequency = 30  # Hz
-        steps_per_frame = round((1 / self.step_size()) / camera_frequency)
-
-        # intrinsic matrix
-        cam_intrinsic = rtf.perspective_frustum(hfov=1.13446, image_shape=(1080, 1920))
-
-        # extrinsic matrix
-        cam_pos_world = np.array(camera.position())
-        cam_ori_world_quat = np.array(camera.orientation())[[1, 2, 3, 0]]
-        cam_ori_world = R.from_quat(cam_ori_world_quat).as_euler("xyz")
-        camera_frame_world = np.stack((cam_pos_world, cam_ori_world)).ravel()
-        cam_extrinsic = rtf.transform(camera_frame_world)
-        # --- end initialize camera projection ---
+            num_cubes = 6
+            env = generators.generate_environment(num_cubes)
+            cubes = list()
+            for cube in env.cubes:
+                cubes.append(self.insert_model())
+        except Exception:
+            self.close()
+            raise RuntimeError("Failed to setup simulation context.")
 
     def simulate(self, *, pre_step_callbacks=None, post_step_callbacks=None):
         if pre_step_callbacks is None:
@@ -102,17 +82,10 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
         if post_step_callbacks is None:
             post_step_callbacks = list()
 
-
         # record video of the simulation
         writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
 
         time.sleep(3)
-
-        num_cubes = 6
-        env = generators.generate_environment(num_cubes)
-        cubes = list()
-        for cube in env.cubes:
-            cubes.append(self.insert_model())
 
         with ign.Subscriber(
             "/clock", parser=clock_parser
@@ -125,9 +98,6 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
             trajectory_duration = 5000
             total_steps = trajectory_duration * num_targets
             for sim_step in range(total_steps):
-                for callback in pre_step_callbacks:
-                    callback(self)
-
                 # get the current time (published each step)
                 sim_time = clock_topic.recv()
 
@@ -195,6 +165,9 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
                 panda.set_joint_position_targets(full_trajectory[time, :, 0], ik_joints)
                 panda.set_joint_velocity_targets(full_trajectory[time, :, 1], ik_joints)
 
+                for callback in pre_step_callbacks:
+                    callback(self)
+
                 self.run()
 
                 for callback in post_step_callbacks:
@@ -203,6 +176,112 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
     def __exit__(self, type, value, traceback):
         writer.close()
         self.close()
+
+
+class Panda(gym_ignition_environments.models.panda.Panda):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        panda = self.model
+
+        panda.to_gazebo().enable_self_collisions(True)
+        self.planner = LinearJointSpacePlanner(
+            panda, control_frequency=self.step_size()
+        )
+        self.ik_joints = [
+            j.name()
+            for j in panda.joints()
+            if j.type is not scenario_core.JointType_fixed
+        ]
+
+        # Insert the ComputedTorqueFixedBase controller
+        assert panda.to_gazebo().insert_model_plugin(
+            *controllers.ComputedTorqueFixedBase(
+                kp=[100.0] * (panda.dofs() - 2) + [10000.0] * 2,
+                ki=[0.0] * panda.dofs(),
+                kd=[17.5] * (panda.dofs() - 2) + [100.0] * 2,
+                urdf=panda.get_model_file(),
+                joints=panda.joint_names(),
+            ).args()
+        )
+
+    @property
+    def tool_frame(self):
+        return self.model.get_link("end_effector_frame")
+
+    @property
+    def position(self):
+        return np.array(self.model.joint_positions())
+
+    @property
+    def velocity(self):
+        return np.array(self.model.joint_velocities())
+
+    @property
+    def acceleration(self):
+        return np.arraz(self.model.joint_accelerations())
+
+    @joint_positions.setter
+    def set_position(self, position: npt.ArrayLike):
+        position = np.asarray(position).tolist()
+        assert self.model.reset_joint_positions(position)
+
+    @joint_velocities.setter
+    def set_velocity(self, velocity: npt.ArrayLike):
+        velocity = np.asarray(velocity).tolist()
+        assert self.model.reset_joint_velocities(velocity)
+
+    @property
+    def target_position(self):
+        return np.array(self.model.joint_position_target())
+
+    @property
+    def target_velocity(self):
+        return np.array(self.model.joint_velocity_target())
+
+    @property
+    def target_acceleration(self):
+        return np.array(self.model.joint_acceleration_target())
+
+    @target_position.setter
+    def set_target_position(self, position: npt.ArrayLike):
+        position = np.asarray(position).tolist()
+        assert self.model.set_joint_position_target(position)
+
+    @target_velocity.setter
+    def set_target_velocity(self, velocity: npt.ArrayLike):
+        velocity = np.asarray(velocity).tolist()
+        assert self.model.set_joint_velocity_target(velocity)
+
+    @target_acceleration.setter
+    def set_target_acceleration(self, acceleration: npt.ArrayLike):
+        acceleration = np.asarray(acceleration).tolist()
+        assert self.model.set_joint_acceleration_target(acceleration)
+
+
+class PandaMixin:
+    """Add a Panda Robot to the simulator"""
+
+    def __init__(self, *, panda_config, **kwargs):
+        super.__init__()
+
+        self.panda = None
+        self.config = panda_config
+
+    def initialize(self):
+        super().initialize()
+        self.panda = Panda(**self.config)
+        panda = self.panda
+
+        # reset the controllers to pandas current pose
+        self.run(paused=True)  # needs to be called before controller initialization
+        panda.target_position = panda.position
+        panda.target_velocity = panda.velocity
+        assert panda.set_joint_acceleration_targets(panda.joint_accelerations())
+        home_position = np.array(end_effector.position())
+        home_orientation = np.array(end_effector.orientation())
+        home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))
+        home_position_joints = panda.joint_positions()
 
 
 class ModelSpawnerMixin:
@@ -254,9 +333,7 @@ class ModelSpawnerMixin:
 
 
 if __name__ == "__main__":
-    simulator = LegibilitySimulator(
-            step_size=0.001, rtf=1.0, steps_per_run=1
-        )
+    simulator = LegibilitySimulator(step_size=0.001, rtf=1.0, steps_per_run=1)
 
     fig, ax = plt.subplots(1)
 
