@@ -206,6 +206,10 @@ class Panda(gym_ignition_environments.models.panda.Panda):
         )
 
     @property
+    def dofs(self):
+        return self.model.dofs()
+
+    @property
     def tool_frame(self):
         return self.model.get_link("end_effector_frame")
 
@@ -274,12 +278,12 @@ class PandaMixin:
         panda = self.panda
 
         # reset the controllers to pandas current pose
-        self.run(paused=True)  # needs to be called before controller initialization
+        self.run(paused=True)  # update the controller positions
         panda.target_position = panda.position
-        panda.target_velocity = panda.velocity
-        assert panda.set_joint_acceleration_targets(panda.joint_accelerations())
-        home_position = np.array(end_effector.position())
-        home_orientation = np.array(end_effector.orientation())
+        panda.target_velocity = np.zeros(panda.dofs)
+        panda.target_acceleration = np.zeros(panda.dofs)
+        home_position = np.array(panda.end_effector.position())
+        home_orientation = np.array(panda.end_effector.orientation())
         home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))
         home_position_joints = panda.joint_positions()
 
@@ -333,9 +337,10 @@ class ModelSpawnerMixin:
 
 
 if __name__ == "__main__":
-    simulator = LegibilitySimulator(step_size=0.001, rtf=1.0, steps_per_run=1)
-
     fig, ax = plt.subplots(1)
+
+    with LegibilitySimulator(step_size=0.001, rtf=1.0, steps_per_run=1) as simulator:
+        simulator.run()
 
     # visualize the trajectory
     ax.imshow(img_msg.image)
