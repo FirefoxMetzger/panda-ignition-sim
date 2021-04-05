@@ -125,6 +125,9 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
             trajectory_duration = 5000
             total_steps = trajectory_duration * num_targets
             for sim_step in range(total_steps):
+                for callback in pre_step_callbacks:
+                    callback(self)
+
                 # get the current time (published each step)
                 sim_time = clock_topic.recv()
 
