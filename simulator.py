@@ -26,7 +26,7 @@ import numpy.typing as npt
 from typing import Tuple
 
 
-class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
+class LegibilitySimulator(ModelSpawnerMixin, PandaMixin, scenario_gazebo.GazeboSimulator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.step_callbacks = list()
@@ -81,11 +81,6 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
             pre_step_callbacks = list()
         if post_step_callbacks is None:
             post_step_callbacks = list()
-
-        # record video of the simulation
-        writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
-
-        time.sleep(3)
 
         with ign.Subscriber(
             "/clock", parser=clock_parser
@@ -174,7 +169,6 @@ class LegibilitySimulator(ModelSpawnerMixin, scenario_gazebo.GazeboSimulator):
                     callback(self)
 
     def __exit__(self, type, value, traceback):
-        writer.close()
         self.close()
 
 
@@ -339,8 +333,12 @@ class ModelSpawnerMixin:
 if __name__ == "__main__":
     fig, ax = plt.subplots(1)
 
+    writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
+
     with LegibilitySimulator(step_size=0.001, rtf=1.0, steps_per_run=1) as simulator:
         simulator.run()
+
+    writer.close()
 
     # visualize the trajectory
     ax.imshow(img_msg.image)
