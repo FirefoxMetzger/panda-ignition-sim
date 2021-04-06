@@ -26,6 +26,54 @@ import numpy.typing as npt
 from typing import Tuple
 
 
+class ModelSpawnerMixin:
+    """Simulator Mixin to spawn objects"""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.model_cache = dict()
+
+    def insert_model(
+        self,
+        model_template: str,
+        position: Tuple[float, float, float],
+        orientation: Tuple[float, float, float, float] = (0, 0, 0, 1),
+        velocity: Tuple[float, float, float] = (0, 0, 0),
+        angular_velocity: Tuple[float, float, float] = (0, 0, 0),
+        *,
+        name_prefix="",
+        **template_parameters
+    ):
+        """Spawn the model into the simulation world"""
+
+        if model_template not in self.model_cache:
+            with open(model_template, "r") as file:
+                self.model_cache[model_template] = file.read()
+
+        if isinstance(velocity, np.array):
+            velocity = velocity.tolist()
+
+        if isinstance(angular_velocity, np.array):
+            angular_velocity = angular_velocity.tolist()
+
+        model = self.model_cache[model_template].format(**template_parameters)
+        model_name = gym_ignition.utils.scenario.get_unique_model_name(
+            world=self.world, model_name=name_prefix
+        )
+        pose = scenario_core.Pose(position, orientation)
+        assert self.world.insert_model(model, pose, model_name)
+
+        obj = world.get_model(model_name)
+
+        velocity = scenario_core.Array3d(velocity.tolist())
+        assert cube.to_gazebo().reset_base_world_linear_velocity(velocity)
+
+        angular_velocity = scenario_core.Array3d(angular_velocity.tolist())
+        assert cube.to_gazebo().reset_base_world_angular_velocity(velocity)
+
+        return obj
+
+
 class LegibilitySimulator(ModelSpawnerMixin, PandaMixin, scenario_gazebo.GazeboSimulator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -172,179 +220,27 @@ class LegibilitySimulator(ModelSpawnerMixin, PandaMixin, scenario_gazebo.GazeboS
         self.close()
 
 
-class Panda(gym_ignition_environments.models.panda.Panda):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        panda = self.model
-
-        panda.to_gazebo().enable_self_collisions(True)
-        self.planner = LinearJointSpacePlanner(
-            panda, control_frequency=self.step_size()
-        )
-        self.ik_joints = [
-            j.name()
-            for j in panda.joints()
-            if j.type is not scenario_core.JointType_fixed
-        ]
-
-        # Insert the ComputedTorqueFixedBase controller
-        assert panda.to_gazebo().insert_model_plugin(
-            *controllers.ComputedTorqueFixedBase(
-                kp=[100.0] * (panda.dofs() - 2) + [10000.0] * 2,
-                ki=[0.0] * panda.dofs(),
-                kd=[17.5] * (panda.dofs() - 2) + [100.0] * 2,
-                urdf=panda.get_model_file(),
-                joints=panda.joint_names(),
-            ).args()
-        )
-
-    @property
-    def dofs(self):
-        return self.model.dofs()
-
-    @property
-    def tool_frame(self):
-        return self.model.get_link("end_effector_frame")
-
-    @property
-    def position(self):
-        return np.array(self.model.joint_positions())
-
-    @property
-    def velocity(self):
-        return np.array(self.model.joint_velocities())
-
-    @property
-    def acceleration(self):
-        return np.arraz(self.model.joint_accelerations())
-
-    @joint_positions.setter
-    def set_position(self, position: npt.ArrayLike):
-        position = np.asarray(position).tolist()
-        assert self.model.reset_joint_positions(position)
-
-    @joint_velocities.setter
-    def set_velocity(self, velocity: npt.ArrayLike):
-        velocity = np.asarray(velocity).tolist()
-        assert self.model.reset_joint_velocities(velocity)
-
-    @property
-    def target_position(self):
-        return np.array(self.model.joint_position_target())
-
-    @property
-    def target_velocity(self):
-        return np.array(self.model.joint_velocity_target())
-
-    @property
-    def target_acceleration(self):
-        return np.array(self.model.joint_acceleration_target())
-
-    @target_position.setter
-    def set_target_position(self, position: npt.ArrayLike):
-        position = np.asarray(position).tolist()
-        assert self.model.set_joint_position_target(position)
-
-    @target_velocity.setter
-    def set_target_velocity(self, velocity: npt.ArrayLike):
-        velocity = np.asarray(velocity).tolist()
-        assert self.model.set_joint_velocity_target(velocity)
-
-    @target_acceleration.setter
-    def set_target_acceleration(self, acceleration: npt.ArrayLike):
-        acceleration = np.asarray(acceleration).tolist()
-        assert self.model.set_joint_acceleration_target(acceleration)
-
-
-class PandaMixin:
-    """Add a Panda Robot to the simulator"""
-
-    def __init__(self, *, panda_config, **kwargs):
-        super.__init__()
-
-        self.panda = None
-        self.config = panda_config
-
-    def initialize(self):
-        super().initialize()
-        self.panda = Panda(**self.config)
-        panda = self.panda
-
-        # reset the controllers to pandas current pose
-        self.run(paused=True)  # update the controller positions
-        panda.target_position = panda.position
-        panda.target_velocity = np.zeros(panda.dofs)
-        panda.target_acceleration = np.zeros(panda.dofs)
-        home_position = np.array(panda.end_effector.position())
-        home_orientation = np.array(panda.end_effector.orientation())
-        home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))
-        home_position_joints = panda.joint_positions()
-
-
-class ModelSpawnerMixin:
-    """Simulator Mixin to spawn objects"""
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.model_cache = dict()
-
-    def insert_model(
-        self,
-        model_template: str,
-        position: Tuple[float, float, float],
-        orientation: Tuple[float, float, float, float] = (0, 0, 0, 1),
-        velocity: Tuple[float, float, float] = (0, 0, 0),
-        angular_velocity: Tuple[float, float, float] = (0, 0, 0),
-        *,
-        name_prefix="",
-        **template_parameters
-    ):
-        """Spawn the model into the simulation world"""
-
-        if model_template not in self.model_cache:
-            with open(model_template, "r") as file:
-                self.model_cache[model_template] = file.read()
-
-        if isinstance(velocity, np.array):
-            velocity = velocity.tolist()
-
-        if isinstance(angular_velocity, np.array):
-            angular_velocity = angular_velocity.tolist()
-
-        model = self.model_cache[model_template].format(**template_parameters)
-        model_name = gym_ignition.utils.scenario.get_unique_model_name(
-            world=self.world, model_name=name_prefix
-        )
-        pose = scenario_core.Pose(position, orientation)
-        assert self.world.insert_model(model, pose, model_name)
-
-        obj = world.get_model(model_name)
-
-        velocity = scenario_core.Array3d(velocity.tolist())
-        assert cube.to_gazebo().reset_base_world_linear_velocity(velocity)
-
-        angular_velocity = scenario_core.Array3d(angular_velocity.tolist())
-        assert cube.to_gazebo().reset_base_world_angular_velocity(velocity)
-
-        return obj
 
 
 if __name__ == "__main__":
-    fig, ax = plt.subplots(1)
+    foo = scenario_gazebo.GazeboSimulator(step_size=0.001, rtf=1.0, steps_per_run=1)
+    foo.initialize()
+    world = foo.get_world()
+    bar = Panda(world=world, position=[0,0,0])
+    import pdb; pdb.set_trace()
+    # fig, ax = plt.subplots(1)
 
-    writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
+    # writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
 
-    with LegibilitySimulator(step_size=0.001, rtf=1.0, steps_per_run=1) as simulator:
-        simulator.run()
 
-    writer.close()
+    # with LegibilitySimulator(step_size=0.001, rtf=1.0, steps_per_run=1) as simulator:
+    #     simulator.run()
 
-    # visualize the trajectory
-    ax.imshow(img_msg.image)
-    ax.set_axis_off()
-    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-    plt.margins(0, 0)
-    ax.xaxis.set_major_locator(plt.NullLocator())
-    ax.yaxis.set_major_locator(plt.NullLocator())
-    plt.show()
+    # # visualize the trajectory
+    # ax.imshow(img_msg.image)
+    # ax.set_axis_off()
+    # plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    # plt.margins(0, 0)
+    # ax.xaxis.set_major_locator(plt.NullLocator())
+    # ax.yaxis.set_major_locator(plt.NullLocator())
+    # plt.show()
