@@ -1,0 +1,175 @@
+from scenario import gazebo as scenario_gazebo
+from scenario import core as scenario_core
+
+import numpy as np
+
+
+class Panda(gym_ignition_environments.models.panda.Panda):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.home_position = (0, -0.785,0, -2.356, 0, 1.571, 0.785, 0.2, 0.2)
+
+        # Constraints
+
+        # joint constraints (units in rad, e.g. rad/s for velocity)
+        # TODO: check the values of the fingers, these are all guesses
+        self.max_position = np.array((2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973, 0.5, 0.5))
+        self.min_position = np.array((-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0, 0))
+        self.max_velocity = np.array((2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100, 2, 2))
+        self.min_velocity = - self.max_velocity
+        self.max_acceleration = np.array((15, 7.5, 10, 12.5, 15, 20, 20, 10, 10), dtype=np.float_)
+        self.min_acceleration = - self.max_acceleration
+        self.max_jerk = np.array((7500, 3750, 5000, 6250, 7500, 10000, 10000, 10000, 10000), dtype=np.float_)
+        self.min_jerk = - self.max_jerk
+        self.max_torque = np.array((87, 87, 87, 87, 12, 12, 12, 12, 12), dtype=np.float_)
+        self.min_torque = - self.max_torque
+        self.max_rotatum = np.array([1000] * 9)
+        self.min_rotatum = - self.max_rotatum
+
+        # tool constraints
+        self.max_tool_velocity = 1.7  # m/s
+        self.max_tool_acceleration = 13  # m/s
+        self.max_tool_jerk = 6500  # m/s
+        self.max_tool_angular_velocity = 2.5  # rad/s
+        self.max_tool_angular_acceleration = 25  # rad/s
+        self.max_tool_angular_jerk = 12500  # rad/s
+
+        # ellbow constraints (in rad)
+        # This is in the docs, but I'm not sure how to interpret it. Perhaps it
+        # refers to null-space motion?
+        # https://frankaemika.github.io/docs/control_parameters.html
+        self.max_ellbow_velocity = 2.175
+        self.max_ellbow_acceleration = 10
+        self.max_ellbow_jerk = 5000
+
+        panda = self.model
+
+        panda.to_gazebo().enable_self_collisions(True)
+        # self.planner = LinearJointSpacePlanner(
+        #     panda, control_frequency=self.step_size()
+        # )
+        self.ik_joints = [
+            j.name()
+            for j in panda.joints()
+            if j.type is not scenario_core.JointType_fixed
+        ]
+
+        # Insert the ComputedTorqueFixedBase controller
+        assert panda.to_gazebo().insert_model_plugin(
+            *controllers.ComputedTorqueFixedBase(
+                kp=[100.0] * (self.dofs - 2) + [10000.0] * 2,
+                ki=[0.0] * self.dofs,
+                kd=[17.5] * (self.dofs - 2) + [100.0] * 2,
+                urdf=self.get_model_file(),
+                joints=self.joint_names(),
+            ).args()
+        )
+
+    def reset(self):
+        self.position = self.home_position
+        self.velocity = [0] * 9
+        self.target_position = self.home_position
+        self.target_velocity = [0] * 9
+        self.target_acceleration = [0] * 9
+
+    
+
+    @property
+    def dofs(self):
+        return self.model.dofs()
+
+    @property
+    def tool(self):
+        return self.model.get_link("end_effector_frame")
+
+    @property
+    def position(self):
+        return np.array(self.model.joint_positions())
+
+    @property
+    def velocity(self):
+        return np.array(self.model.joint_velocities())
+
+    @property
+    def acceleration(self):
+        return np.array(self.model.joint_accelerations())
+
+    @position.setter
+    def position(self, position: npt.ArrayLike):
+        position = np.asarray(position).tolist()
+
+        if np.any((position < self.min_position) | (self.max_position < position)):
+            raise ValueError("The position exceeds the robot's limits.")
+
+        assert self.model.to_gazebo().reset_joint_positions(position.tolist())
+
+    @velocity.setter
+    def velocity(self, velocity: npt.ArrayLike):
+        velocity = np.asarray(velocity)
+
+        if np.any((velocity < self.min_velocity) | (self.max_velocity < velocity)):
+            raise ValueError("The velocity exceeds the robot's limits.")
+
+        assert self.model.to_gazebo().reset_joint_velocities(velocity.tolist())
+
+    @property
+    def target_position(self):
+        return np.array(self.model.joint_position_targets())
+
+    @property
+    def target_velocity(self):
+        return np.array(self.model.joint_velocity_targets())
+
+    @property
+    def target_acceleration(self):
+        return np.array(self.model.joint_acceleration_targets())
+
+    @target_position.setter
+    def target_position(self, position: npt.ArrayLike):
+        position = np.asarray(position)
+
+        if np.any((position < self.min_position) | (self.max_position < position)):
+            raise ValueError("The target position exceeds the robot's limits.")
+
+        assert self.model.set_joint_position_targets(position.tolist())
+
+    @target_velocity.setter
+    def target_velocity(self, velocity: npt.ArrayLike):
+        velocity = np.asarray(velocity)
+
+        if np.any((velocity < self.min_velocity) | (self.max_velocity < velocity)):
+            raise ValueError("The target velocity exceeds the robot's limits.")
+
+        assert self.model.set_joint_velocity_targets(velocity.tolist())
+
+    @target_acceleration.setter
+    def target_acceleration(self, acceleration: npt.ArrayLike):
+        acceleration = np.asarray(acceleration)
+
+        if np.any((acceleration < self.min_acceleration) | (self.max_acceleration < acceleration)):
+            raise ValueError("The target acceleration exceeds the robot's limits.")
+
+        assert self.model.set_joint_acceleration_targets(acceleration.tolist())
+
+class PandaMixin:
+    """Add a Panda Robot to the simulator"""
+
+    def __init__(self, *, panda_config, **kwargs):
+        super.__init__()
+
+        self.panda = None
+        self.config = panda_config
+
+    def initialize(self):
+        super().initialize()
+        self.panda = Panda(**self.config)
+        panda = self.panda
+
+        # reset the controllers to pandas current pose
+        self.run(paused=True)  # update the controller positions
+        panda.reset()
+
+        home_position = np.array(panda.end_effector.position())
+        home_orientation = np.array(panda.end_effector.orientation())
+        home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))
