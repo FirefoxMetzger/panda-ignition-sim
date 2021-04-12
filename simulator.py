@@ -13,6 +13,7 @@ from scipy.spatial.transform import Rotation as R
 import ropy.ignition as ign
 import ropy.transform as rtf
 import ropy.trajectory as rtj
+from ropy.trajectory import spline_trajectory
 from parsers import camera_parser, clock_parser
 from dataclasses import dataclass
 
@@ -158,8 +159,33 @@ class LegibilitySimulator(
         world_target = pos + np.array((0, 0, 0.0))
         tool_pos, tool_rot = self.panda.tool_pose
 
-        self.panda.tool_pose = (world_target, tool_rot)
-        self.panda.target_tool_pose((world_target, tool_rot))
+        trajectory_duration = 5*30
+
+        # key in the movement's poses
+        pose_keys = np.empty((5, 9), dtype=np.float_)
+        pose_keys[0] = self.panda.home_position
+
+        # above cube, open gripper
+        pose_keys[1] = self.panda.solve_ik(position=(pos + np.array((0, 0, 0.01))))
+        pose_keys[1, -2:] = self.panda.max_position[-2:]
+        
+        pose_keys[2] = self.panda.solve_ik(position=pos)
+        pose_keys[2, -2:] = self.panda.max_position[-2:]
+
+        # grasping the cube
+        pose_keys[3] = self.panda.solve_ik(position = pos)
+        pose_keys[3, -2:] = (0, 0)
+
+        # back to home
+        pose_keys[4] = self.panda.home_position
+        pose_keys[4, -2:] = (0, 0)
+
+
+        # set keyframe times
+        times = np.array([0, 0.8, 0.85, 0.9, 1]) * trajectory_duration
+
+        # self.panda.tool_pose = (world_target, tool_rot)
+        # self.panda.target_tool_pose((world_target, tool_rot))
 
         # pos_trajectory = generators.sample_trajectory(
         #     home_position, world_target, env, num_control=2
@@ -170,20 +196,29 @@ class LegibilitySimulator(
         # world_ori = world_ori.as_quat()[[3, 0, 1, 2]]
         # ori_trajectory = (home_orientation, world_ori)
 
-        # import pdb; pdb.set_trace()
-        # t = np.arange(1, 5*30 + 1)
+        t = np.arange(0, 5*30) + 1
         # trajectory = self.panda.plan(
         #     t,
-        #     [[home_position, world_target], []],
+        #     [pose_keys, orientation_keys],
         #     t_begin=sim_step,
         #     t_end=sim_step + trajectory_duration,
         # )
-        # full_trajectory = trajectory
+
+        pose = spline_trajectory(
+            t, pose_keys, t_control=times, degree=1
+        )
+        twist = spline_trajectory(
+            t,
+            pose_keys,
+            t_control=times,
+            degree=1,
+            derivative=1,
+        )
 
         with ign.Subscriber("/camera", parser=camera_parser) as camera_topic:
             self.run(paused=True)
 
-            trajectory_duration = 5*30
+            
             total_steps = trajectory_duration
             for sim_step in range(total_steps):
                 sim_time = self.world.time()
@@ -204,9 +239,6 @@ class LegibilitySimulator(
                 # if sim_step == 0 or np.allclose(
                 #     end_effector.position(), world_target, atol=0.01
                 # ):
-
-
-
                 #     # visualize target
                 #     in_world = rtf.homogenize(world_target)
                 #     in_cam = np.matmul(cam_extrinsic, in_world)
@@ -216,8 +248,8 @@ class LegibilitySimulator(
 
                 # time = min(trajectory_duration - 1, sim_step - plan_step)
 
-                # panda.set_joint_position_targets(full_trajectory[time, :, 0], ik_joints)
-                # panda.set_joint_velocity_targets(full_trajectory[time, :, 1], ik_joints)
+                self.panda.target_position = pose[sim_step]
+                self.panda.target_velocity = twist[sim_step]
 
                 for callback in pre_step_callbacks:
                     callback(self)

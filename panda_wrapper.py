@@ -18,9 +18,9 @@ class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Pand
 
         # joint constraints (units in rad, e.g. rad/s for velocity)
         # TODO: check the values of the fingers, these are all guesses
-        self.max_position = np.array((2.8973, 1.7628, 2.8973, 0.0698, 2.8973, 3.7525, 2.8973, 0.05, 0.05))
-        self.min_position = np.array((-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0, 0))
-        self.max_velocity = np.array((2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100, 2, 2))
+        self.max_position = np.array((2.8973, 1.7628, 2.8973, 0.0698, 2.8973, 3.7525, 2.8973, 0.041, 0.041))
+        self.min_position = np.array((-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, -0.001, -0.001))
+        self.max_velocity = np.array((2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100, 0.3, 0.3))
         self.min_velocity = - self.max_velocity
         self.max_acceleration = np.array((15, 7.5, 10, 12.5, 15, 20, 20, 10, 10), dtype=np.float_)
         self.min_acceleration = - self.max_acceleration
@@ -177,6 +177,14 @@ class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Pand
         old_position, old_orientation = self.tool_pose
         position = old_position if position is None else position
         orientation = old_orientation if orientation is None else orientation
+
+        # reset IK
+        self.ik.set_current_robot_configuration(
+            base_position=np.array(self.base_position()),
+            base_quaternion=np.array(self.base_orientation()),
+            joint_configuration=self.home_position,
+        )
+        self.ik.solve()
 
         return super().solve_ik(position, orientation)
 

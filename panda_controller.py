@@ -16,7 +16,7 @@ class LinearJointSpacePlanner:
         self.ik_joints = [
             j.name()
             for j in self.model.joints()
-            if j.type is not scenario_core.JointType_fixed
+            if j.type is not scenario_core.JointType_fixed and "finger" not in j.name()
         ]
 
         # Initialize Panda in Ignition
@@ -73,8 +73,10 @@ class LinearJointSpacePlanner:
 
         # Run the IK
         self.ik.solve()
+        result = self.position.copy()
+        result[:-2] = self.ik.get_reduced_solution().joint_configuration
 
-        return self.ik.get_reduced_solution().joint_configuration
+        return result
 
     def plan(self, t, pose_key, *, t_key=None, t_begin=0, t_end=1):
         if t_key is None:
