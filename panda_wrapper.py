@@ -1,20 +1,24 @@
 from scenario import gazebo as scenario_gazebo
 from scenario import core as scenario_core
+import gym_ignition_environments
+from gym_ignition.context.gazebo import controllers
+from panda_controller import LinearJointSpacePlanner
+
 
 import numpy as np
+import numpy.typing as npt
 
 
-class Panda(gym_ignition_environments.models.panda.Panda):
+class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Panda):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-        self.home_position = (0, -0.785,0, -2.356, 0, 1.571, 0.785, 0.2, 0.2)
+        self.home_position = (0, -0.785,0, -2.356, 0, 1.571, 0.785, 0.03, 0.03)
 
         # Constraints
 
         # joint constraints (units in rad, e.g. rad/s for velocity)
         # TODO: check the values of the fingers, these are all guesses
-        self.max_position = np.array((2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973, 0.5, 0.5))
+        self.max_position = np.array((2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973, 0.05, 0.05))
         self.min_position = np.array((-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0, 0))
         self.max_velocity = np.array((2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100, 2, 2))
         self.min_velocity = - self.max_velocity
@@ -46,14 +50,6 @@ class Panda(gym_ignition_environments.models.panda.Panda):
         panda = self.model
 
         panda.to_gazebo().enable_self_collisions(True)
-        # self.planner = LinearJointSpacePlanner(
-        #     panda, control_frequency=self.step_size()
-        # )
-        self.ik_joints = [
-            j.name()
-            for j in panda.joints()
-            if j.type is not scenario_core.JointType_fixed
-        ]
 
         # Insert the ComputedTorqueFixedBase controller
         assert panda.to_gazebo().insert_model_plugin(
@@ -97,7 +93,7 @@ class Panda(gym_ignition_environments.models.panda.Panda):
 
     @position.setter
     def position(self, position: npt.ArrayLike):
-        position = np.asarray(position).tolist()
+        position = np.asarray(position)
 
         if np.any((position < self.min_position) | (self.max_position < position)):
             raise ValueError("The position exceeds the robot's limits.")
@@ -156,20 +152,22 @@ class PandaMixin:
     """Add a Panda Robot to the simulator"""
 
     def __init__(self, *, panda_config, **kwargs):
-        super.__init__()
+        super().__init__(**kwargs)
 
         self.panda = None
         self.config = panda_config
 
     def initialize(self):
         super().initialize()
+        self.config["world"] = self.world
         self.panda = Panda(**self.config)
         panda = self.panda
+        assert panda.set_controller_period(period=self.step_size())
 
-        # reset the controllers to pandas current pose
-        self.run(paused=True)  # update the controller positions
         panda.reset()
+        self.run(paused=True)  # update the controller positions
+        panda.target_position = panda.position
 
-        home_position = np.array(panda.end_effector.position())
-        home_orientation = np.array(panda.end_effector.orientation())
+        home_position = np.array(panda.tool.position())
+        home_orientation = np.array(panda.tool.orientation())
         home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))

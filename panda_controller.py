@@ -10,32 +10,34 @@ import numpy as np
 
 
 class LinearJointSpacePlanner:
-    def __init__(self, panda, control_frequency=0.001):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.ik_joints = [
+            j.name()
+            for j in self.model.joints()
+            if j.type is not scenario_core.JointType_fixed
+        ]
+
         # Initialize Panda in Ignition
-        self.panda = panda
-        assert panda.set_controller_period(period=control_frequency)
         assert (
-            panda.get_joint(joint_name="panda_finger_joint1")
+            self.get_joint(joint_name="panda_finger_joint1")
             .to_gazebo()
             .set_max_generalized_force(max_force=500.0)
         )
         assert (
-            panda.get_joint(joint_name="panda_finger_joint2")
+            self.get_joint(joint_name="panda_finger_joint2")
             .to_gazebo()
             .set_max_generalized_force(max_force=500.0)
         )
 
         # Initialize IK
 
-        ik_joints = [
-            j.name()
-            for j in panda.joints()
-            if j.type is not scenario_core.JointType_fixed
-        ]
+        ik_joints = self.ik_joints
         ik = inverse_kinematics_nlp.InverseKinematicsNLP(
-            urdf_filename=panda.get_model_file(),
+            urdf_filename=self.get_model_file(),
             considered_joints=ik_joints,
-            joint_serialization=panda.joint_names(),
+            joint_serialization=self.joint_names(),
         )
 
         ik.initialize(
@@ -43,13 +45,13 @@ class LinearJointSpacePlanner:
             floating_base=False,
             cost_tolerance=1e-8,
             constraints_tolerance=1e-8,
-            base_frame=panda.base_frame(),
+            base_frame=self.base_frame(),
         )
 
         ik.set_current_robot_configuration(
-            base_position=np.array(panda.base_position()),
-            base_quaternion=np.array(panda.base_orientation()),
-            joint_configuration=np.array(panda.joint_positions()),
+            base_position=np.array(self.base_position()),
+            base_quaternion=np.array(self.base_orientation()),
+            joint_configuration=np.array(self.joint_positions()),
         )
 
         ik.add_target(
