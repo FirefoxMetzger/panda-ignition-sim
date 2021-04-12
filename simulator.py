@@ -116,6 +116,12 @@ class LegibilitySimulator(
         self.env = environment
         self.cubes = list()
 
+        self.path = None
+        self.path_velocity = None
+        self.path_time_start = 0
+        self.path_time_end = 10*30
+
+
     @property
     def world(self):
         return self.get_world()
@@ -144,70 +150,45 @@ class LegibilitySimulator(
 
         return self
 
-    def simulate(self, *, pre_step_callbacks=None, post_step_callbacks=None):
-        if pre_step_callbacks is None:
-            pre_step_callbacks = list()
-        if post_step_callbacks is None:
-            post_step_callbacks = list()
-
-        num_cubes = len(self.env.cubes)
-        cube_idx = random.randint(0, num_cubes - 1)
+    def prepare_goal_trajectory(self, cube_idx):
         cube = self.cubes[cube_idx]
-        pos = np.array(cube.base_position())
+        cube_position = np.array(cube.base_position())
         ori = R.from_quat(np.array(cube.base_orientation())[[1, 2, 3, 0]])
 
-        world_target = pos + np.array((0, 0, 0.0))
         tool_pos, tool_rot = self.panda.tool_pose
 
-        trajectory_duration = 5*30
+        idx = random.randint(0, len(self.env.control_points))
+        via_point = self.env.control_points[idx] + self.panda.base_position()
 
         # key in the movement's poses
-        pose_keys = np.empty((5, 9), dtype=np.float_)
+        #   0 - home_position
+        #   1 - random via-point
+        #   2 - above cube
+        #   3 - at cube (open gripper)
+        #   4 - grabbing cube (closed gripper)
+        #   5 - home_position (holding cube)
+        pose_keys = np.empty((6, 9), dtype=np.float_)
         pose_keys[0] = self.panda.home_position
-
-        # above cube, open gripper
-        pose_keys[1] = self.panda.solve_ik(position=(pos + np.array((0, 0, 0.01))))
-        pose_keys[1, -2:] = self.panda.max_position[-2:]
-        
-        pose_keys[2] = self.panda.solve_ik(position=pos)
-        pose_keys[2, -2:] = self.panda.max_position[-2:]
-
-        # grasping the cube
-        pose_keys[3] = self.panda.solve_ik(position = pos)
-        pose_keys[3, -2:] = (0, 0)
-
-        # back to home
-        pose_keys[4] = self.panda.home_position
+        pose_keys[1] = self.panda.solve_ik(position=via_point)
+        pose_keys[2] = self.panda.solve_ik(position=(cube_position + np.array((0, 0, 0.01))))
+        pose_keys[2, -2:] = (.04, .04)
+        pose_keys[3] = self.panda.solve_ik(position=cube_position)
+        pose_keys[3, -2:] = (.04, .04)
+        pose_keys[4] = self.panda.solve_ik(position = cube_position)
         pose_keys[4, -2:] = (0, 0)
+        pose_keys[5] = self.panda.home_position
+        pose_keys[5, -2:] = (0, 0)
 
 
         # set keyframe times
-        times = np.array([0, 0.8, 0.85, 0.9, 1]) * trajectory_duration
+        trajectory_duration = self.path_time_end - self.path_time_start
+        times = np.array([0, 0.275, 0.55, 0.6, 0.7, 1]) * trajectory_duration + self.path_time_start
 
-        # self.panda.tool_pose = (world_target, tool_rot)
-        # self.panda.target_tool_pose((world_target, tool_rot))
-
-        # pos_trajectory = generators.sample_trajectory(
-        #     home_position, world_target, env, num_control=2
-        # )
-        # pos_trajectory[1:-1, :] += panda.base_position()
-
-        # world_ori = R.from_euler(seq="y", angles=(np.pi / 2))  # * ori
-        # world_ori = world_ori.as_quat()[[3, 0, 1, 2]]
-        # ori_trajectory = (home_orientation, world_ori)
-
-        t = np.arange(0, 5*30) + 1
-        # trajectory = self.panda.plan(
-        #     t,
-        #     [pose_keys, orientation_keys],
-        #     t_begin=sim_step,
-        #     t_end=sim_step + trajectory_duration,
-        # )
-
-        pose = spline_trajectory(
+        t = np.arange(self.path_time_start, self.path_time_end) + 1
+        self.path = spline_trajectory(
             t, pose_keys, t_control=times, degree=1
         )
-        twist = spline_trajectory(
+        self.path_velocity = spline_trajectory(
             t,
             pose_keys,
             t_control=times,
@@ -215,12 +196,12 @@ class LegibilitySimulator(
             derivative=1,
         )
 
-        with ign.Subscriber("/camera", parser=camera_parser) as camera_topic:
-            self.run(paused=True)
 
-            
-            total_steps = trajectory_duration
-            for sim_step in range(total_steps):
+    def run(self, **kwargs):
+        # super().run(paused=True)
+        with ign.Subscriber("/camera", parser=camera_parser) as camera_topic:
+            super().run(paused=True)
+            for sim_step in range(self.path_time_end+30):
                 sim_time = self.world.time()
 
                 # get synced camera images (published at 30Hz)
@@ -246,21 +227,14 @@ class LegibilitySimulator(
                 #     in_px = rtf.cartesianize(in_px_hom)
                 #     ax.add_patch(Circle(in_px, radius=10, color="red"))
 
-                # time = min(trajectory_duration - 1, sim_step - plan_step)
+                if self.path_time_start < sim_step < self.path_time_end:
+                    self.panda.target_position = self.path[sim_step]
+                    self.panda.target_velocity = self.path_velocity[sim_step]
 
-                self.panda.target_position = pose[sim_step]
-                self.panda.target_velocity = twist[sim_step]
+                super().run(**kwargs)
 
-                for callback in pre_step_callbacks:
-                    callback(self)
-
-                self.run()
-
-                for callback in post_step_callbacks:
-                    callback(self)
 
     def __exit__(self, type, value, traceback):
-        time.sleep(0.5)
         self.close()
 
 
@@ -280,7 +254,8 @@ if __name__ == "__main__":
         steps_per_run=round((1 / 0.001) / 30),
     ) as simulator:
         simulator.gui()
-        simulator.simulate()
+        simulator.prepare_goal_trajectory(0)
+        simulator.run()
 
     # # visualize the trajectory
     # ax.imshow(img_msg.image)

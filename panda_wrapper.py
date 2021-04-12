@@ -18,7 +18,7 @@ class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Pand
 
         # joint constraints (units in rad, e.g. rad/s for velocity)
         # TODO: check the values of the fingers, these are all guesses
-        self.max_position = np.array((2.8973, 1.7628, 2.8973, 0.0698, 2.8973, 3.7525, 2.8973, 0.041, 0.041))
+        self.max_position = np.array((2.8973, 1.7628, 2.8973, 0.0698, 2.8973, 3.7525, 2.8973, 0.045, 0.045))
         self.min_position = np.array((-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, -0.001, -0.001))
         self.max_velocity = np.array((2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100, 0.3, 0.3))
         self.min_velocity = - self.max_velocity
@@ -122,6 +122,7 @@ class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Pand
         position = np.asarray(position)
 
         if np.any((position < self.min_position) | (self.max_position < position)):
+            import pdb; pdb.set_trace()
             raise ValueError("The target position exceeds the robot's limits.")
 
         assert self.model.set_joint_position_targets(position.tolist())
@@ -221,9 +222,5 @@ class PandaMixin:
         assert panda.set_controller_period(period=self.step_size())
 
         panda.reset()
-        self.run(paused=True)  # update the controller positions
+        super().run(paused=True)  # update the controller positions
         panda.target_position = panda.position
-
-        home_position = np.array(panda.tool.position())
-        home_orientation = np.array(panda.tool.orientation())
-        home_pose = np.hstack((home_position, home_orientation[[1, 2, 3, 0]]))

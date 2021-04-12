@@ -105,7 +105,7 @@ def generate_environment(num_cubes=5, num_control=1000) -> Environment:
         )
 
     # define control points for trajectory sampling
-    center = np.array((0.4, 0, 0.2))
+    center = np.array((0.4, 0, 0.25))
     half_extent = np.array((0.25, 0.5, 0.15))
     control_points = center + np.random.rand(1000, 3) * 2 * half_extent - half_extent
 
