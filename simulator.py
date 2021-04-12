@@ -106,6 +106,14 @@ class CameraMixin:
         camera_frame_world = np.stack((cam_pos_world, cam_ori_world)).ravel()
         self.cam_extrinsic = rtf.transform(camera_frame_world)
 
+    def in_px_coordinates(self, position):
+        pos_world = rtf.homogenize(position)
+        pos_cam = np.matmul(self.cam_extrinsic, pos_world)
+        pos_px_hom = np.matmul(self.cam_intrinsic, pos_cam)
+        pos_px = rtf.cartesianize(pos_px_hom)
+
+        return pos_px
+
 
 class LegibilitySimulator(
     ModelSpawnerMixin, CameraMixin, PandaMixin, scenario_gazebo.GazeboSimulator
@@ -119,7 +127,7 @@ class LegibilitySimulator(
         self.path = None
         self.path_velocity = None
         self.path_time_start = 0
-        self.path_time_end = 10*30
+        self.path_time_end = 10
 
 
     @property
@@ -184,7 +192,14 @@ class LegibilitySimulator(
         trajectory_duration = self.path_time_end - self.path_time_start
         times = np.array([0, 0.275, 0.55, 0.6, 0.7, 1]) * trajectory_duration + self.path_time_start
 
-        t = np.arange(self.path_time_start, self.path_time_end) + 1
+        if self.path_time_start % self.step_size() != 0:
+            raise RuntimeError("Path does not start during a simulator step.")
+
+        t = np.arange(
+            self.path_time_start+self.step_size(),
+            self.path_time_end+self.step_size(),
+            self.step_size()
+        )
         self.path = spline_trajectory(
             t, pose_keys, t_control=times, degree=1
         )
@@ -198,40 +213,13 @@ class LegibilitySimulator(
 
 
     def run(self, **kwargs):
-        # super().run(paused=True)
-        with ign.Subscriber("/camera", parser=camera_parser) as camera_topic:
-            super().run(paused=True)
-            for sim_step in range(self.path_time_end+30):
-                sim_time = self.world.time()
+        sim_time = self.world.time()
+        if self.path_time_start < sim_time < self.path_time_end:
+            idx = int(round((sim_time - self.path_time_start) / self.step_size()))
+            self.panda.target_position = self.path[idx]
+            self.panda.target_velocity = self.path_velocity[idx]
 
-                # get synced camera images (published at 30Hz)
-                img_msg = camera_topic.recv()
-                # writer.append_data(img_msg.image)
-
-                # get px coordinates of endeffector
-                # eff_world = rtf.homogenize(end_effector.position())
-                # eff_cam = np.matmul(cam_extrinsic, eff_world)
-                # eff_px_hom = np.matmul(cam_intrinsic, eff_cam)
-                # eff_px = rtf.cartesianize(eff_px_hom)
-
-                # ax.add_patch(Circle(eff_px, radius=6))
-                assert np.isclose(sim_time, img_msg.time, atol=1e-5)
-
-                # if sim_step == 0 or np.allclose(
-                #     end_effector.position(), world_target, atol=0.01
-                # ):
-                #     # visualize target
-                #     in_world = rtf.homogenize(world_target)
-                #     in_cam = np.matmul(cam_extrinsic, in_world)
-                #     in_px_hom = np.matmul(cam_intrinsic, in_cam)
-                #     in_px = rtf.cartesianize(in_px_hom)
-                #     ax.add_patch(Circle(in_px, radius=10, color="red"))
-
-                if self.path_time_start < sim_step < self.path_time_end:
-                    self.panda.target_position = self.path[sim_step]
-                    self.panda.target_velocity = self.path_velocity[sim_step]
-
-                super().run(**kwargs)
+        super().run(**kwargs)
 
 
     def __exit__(self, type, value, traceback):
@@ -239,9 +227,9 @@ class LegibilitySimulator(
 
 
 if __name__ == "__main__":
-    # fig, ax = plt.subplots(1)
+    fig, ax = plt.subplots(1)
 
-    # writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
+    writer = iio.get_writer("my_video.mp4", format="FFMPEG", mode="I", fps=30)
     env = generators.generate_environment(6)
 
     panda_config = {"position": [0.2, 0, 1.025]}
@@ -253,15 +241,29 @@ if __name__ == "__main__":
         rtf=1.0,
         steps_per_run=round((1 / 0.001) / 30),
     ) as simulator:
-        simulator.gui()
-        simulator.prepare_goal_trajectory(0)
-        simulator.run()
+        goal_px = simulator.in_px_coordinates(simulator.cubes[0].base_position())
+        ax.add_patch(Circle(goal_px, radius=10, color="red"))
 
-    # # visualize the trajectory
-    # ax.imshow(img_msg.image)
-    # ax.set_axis_off()
-    # plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-    # plt.margins(0, 0)
-    # ax.xaxis.set_major_locator(plt.NullLocator())
-    # ax.yaxis.set_major_locator(plt.NullLocator())
-    # plt.show()
+        # simulator.gui()
+        simulator.prepare_goal_trajectory(0)
+        with ign.Subscriber("/camera", parser=camera_parser) as camera_topic:
+            simulator.run(paused=True)
+            for sim_step in range(330):
+                img_msg = camera_topic.recv()
+                writer.append_data(img_msg.image)
+
+                # get px coordinates of endeffector
+                eff_px = simulator.in_px_coordinates(simulator.panda.tool_pose[0])
+                ax.add_patch(Circle(eff_px, radius=5))
+                simulator.run()
+
+    writer.close()
+
+    # visualize the trajectory
+    ax.imshow(img_msg.image)
+    ax.set_axis_off()
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    plt.margins(0, 0)
+    ax.xaxis.set_major_locator(plt.NullLocator())
+    ax.yaxis.set_major_locator(plt.NullLocator())
+    plt.show()
