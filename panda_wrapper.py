@@ -11,14 +11,14 @@ import numpy.typing as npt
 
 class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Panda):
     def __init__(self, **kwargs):
+        self.home_position = np.array((0, -0.785,0, -2.356, 0, 1.571, 0.785, 0.03, 0.03))
         super().__init__(**kwargs)
-        self.home_position = (0, -0.785,0, -2.356, 0, 1.571, 0.785, 0.03, 0.03)
 
         # Constraints
 
         # joint constraints (units in rad, e.g. rad/s for velocity)
         # TODO: check the values of the fingers, these are all guesses
-        self.max_position = np.array((2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973, 0.05, 0.05))
+        self.max_position = np.array((2.8973, 1.7628, 2.8973, 0.0698, 2.8973, 3.7525, 2.8973, 0.05, 0.05))
         self.min_position = np.array((-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0, 0))
         self.max_velocity = np.array((2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100, 2, 2))
         self.min_velocity = - self.max_velocity
@@ -74,10 +74,6 @@ class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Pand
     @property
     def dofs(self):
         return self.model.dofs()
-
-    @property
-    def tool(self):
-        return self.model.get_link("end_effector_frame")
 
     @property
     def position(self):
@@ -147,6 +143,58 @@ class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Pand
             raise ValueError("The target acceleration exceeds the robot's limits.")
 
         assert self.model.set_joint_acceleration_targets(acceleration.tolist())
+
+    @property
+    def tool(self):
+        return self.model.get_link("end_effector_frame")
+
+    @property
+    def tool_pose(self):
+        position = self.model.get_link("end_effector_frame").position()
+        orientation = self.model.get_link("end_effector_frame").orientation()
+
+        return (position, orientation)
+
+    @tool_pose.setter
+    def tool_pose(self, pose):
+        """Set the joints so that the tool is in the desired configuration"""
+
+        position, orientation = pose
+        if position is None and orientation is None:
+            return
+
+        self.position = self.solve_ik(position=position, orientation=orientation)
+
+    # @target_tool_pose.setter
+    def target_tool_pose(self, pose):
+        position, orientation = pose
+        self.target_position = self.solve_ik(position=position, orientation=orientation)
+
+    def solve_ik(self, *, position=None, orientation=None):
+        if position is None and orientation is None:
+            return self.position
+
+        old_position, old_orientation = self.tool_pose
+        position = old_position if position is None else position
+        orientation = old_orientation if orientation is None else orientation
+
+        return super().solve_ik(position, orientation)
+
+    @property
+    def tool_velocity(self):
+        return self.model.get_link("end_effector_frame").world_linear_velocity()
+
+    @property
+    def tool_angular_velocity(self):
+        return self.model.get_link("end_effector_frame").world_angular_velocity()
+
+    @property
+    def tool_acceleration(self):
+        return self.model.get_link("end_effector_frame").world_linear_acceleration()
+
+    @property
+    def tool_angular_acceleration(self):
+        return self.model.get_link("end_effector_frame").world_angular_acceleration()
 
 class PandaMixin:
     """Add a Panda Robot to the simulator"""

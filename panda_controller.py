@@ -51,7 +51,7 @@ class LinearJointSpacePlanner:
         ik.set_current_robot_configuration(
             base_position=np.array(self.base_position()),
             base_quaternion=np.array(self.base_orientation()),
-            joint_configuration=np.array(self.joint_positions()),
+            joint_configuration=self.home_position,
         )
 
         ik.add_target(
@@ -59,6 +59,7 @@ class LinearJointSpacePlanner:
             target_type=inverse_kinematics_nlp.TargetType.POSE,
             as_constraint=False,
         )
+        ik.solve()  # warm up IK
         self.ik = ik
 
     def solve_ik(
@@ -67,7 +68,7 @@ class LinearJointSpacePlanner:
         self.ik.update_transform_target(
             target_name=self.ik.get_active_target_names()[0],
             position=target_position,
-            quaternion=target_orientation,
+            quaternion=np.array(target_orientation),
         )
 
         # Run the IK

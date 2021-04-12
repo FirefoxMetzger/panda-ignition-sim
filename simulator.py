@@ -152,11 +152,15 @@ class LegibilitySimulator(
         num_cubes = len(self.env.cubes)
         cube_idx = random.randint(0, num_cubes - 1)
         cube = self.cubes[cube_idx]
-        # import pdb; pdb.set_trace()
         pos = np.array(cube.base_position())
         ori = R.from_quat(np.array(cube.base_orientation())[[1, 2, 3, 0]])
 
-        world_target = pos + np.array((0, 0, 0.055))
+        world_target = pos + np.array((0, 0, 0.0))
+        tool_pos, tool_rot = self.panda.tool_pose
+
+        self.panda.tool_pose = (world_target, tool_rot)
+        self.panda.target_tool_pose((world_target, tool_rot))
+
         # pos_trajectory = generators.sample_trajectory(
         #     home_position, world_target, env, num_control=2
         # )
