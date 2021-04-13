@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pickle
 import pandas as pd
+import random
+from datetime import datetime
 
 import generators
 from simulator import LegibilitySimulator
@@ -17,13 +19,14 @@ from scenario import gazebo as scenario_gazebo
 env_idx = int(sys.argv[1])
 goal_idx = int(sys.argv[2])
 trajectory_idx = int(sys.argv[3])
+random.seed(datetime.now())
 
 dataset_root = Path(__file__).parents[0] / "dataset"
 env_meta = pd.read_excel(dataset_root / "environment_metadata.xlsx").set_index("Unnamed: 0")
 trajectory_meta = pd.read_excel(dataset_root / "trajectory_metadata.xlsx").set_index("Unnamed: 0")
-env_root = dataset_root / env_meta.loc[env_idx].DataDir
+env_root = Path(".") / env_meta.loc[env_idx].DataDir
 
-with open(dataset_root / env_meta.loc[env_idx].EnvironmentFilePath, "rb") as file:
+with open(env_meta.loc[env_idx].EnvironmentFilePath, "rb") as file:
     env = pickle.load(file)
 
 trajectory_row = pd.DataFrame(
@@ -32,7 +35,7 @@ trajectory_row = pd.DataFrame(
         False,
         goal_idx,
         trajectory_idx,
-        0,  # TODO
+        random.randint(0, len(env.control_points)),
         env_root / f"goal_{goal_idx}_trajectory_{trajectory_idx}.mp4",
         env_root / f"goal_{goal_idx}_trajectory_{trajectory_idx}.png",
         env_root / f"goal_{goal_idx}_trajectory_{trajectory_idx}_camera_trajectory.npy",
@@ -79,7 +82,7 @@ with LegibilitySimulator(
     ax.add_patch(Circle(goal_px, radius=10, color="red"))
 
     # simulator.gui()
-    simulator.prepare_goal_trajectory(goal_idx)
+    simulator.prepare_goal_trajectory(goal_idx, via_point_idx=trajectory_row.iloc[0]["viaPointIdx"])
     with ign.Subscriber("/camera", parser=camera_parser) as camera_topic:
         simulator.run(paused=True)
         for sim_step in range(330):

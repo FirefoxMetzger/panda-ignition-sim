@@ -158,14 +158,17 @@ class LegibilitySimulator(
 
         return self
 
-    def prepare_goal_trajectory(self, cube_idx):
+    def prepare_goal_trajectory(self, cube_idx, via_point_idx=None):
         cube = self.cubes[cube_idx]
         cube_position = np.array(cube.base_position())
         ori = R.from_quat(np.array(cube.base_orientation())[[1, 2, 3, 0]])
 
         tool_pos, tool_rot = self.panda.tool_pose
 
-        idx = random.randint(0, len(self.env.control_points))
+        if via_point_idx is None:
+            idx = random.randint(0, len(self.env.control_points))
+        else:
+            idx = via_point_idx
         via_point = self.env.control_points[idx] + self.panda.base_position()
 
         # key in the movement's poses
