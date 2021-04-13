@@ -122,7 +122,6 @@ class Panda(LinearJointSpacePlanner, gym_ignition_environments.models.panda.Pand
         position = np.asarray(position)
 
         if np.any((position < self.min_position) | (self.max_position < position)):
-            import pdb; pdb.set_trace()
             raise ValueError("The target position exceeds the robot's limits.")
 
         assert self.model.set_joint_position_targets(position.tolist())

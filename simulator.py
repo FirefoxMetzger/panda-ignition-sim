@@ -223,7 +223,7 @@ class LegibilitySimulator(
 
 
     def __exit__(self, type, value, traceback):
-        self.close()
+        assert self.close()
 
 
 if __name__ == "__main__":

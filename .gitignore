@@ -1,7 +1,10 @@
 ignition/
 .vscode/
 __pycache__/
+dataset/
+
 
 *.png
 *.jpg
 *.mp4
+*.npy

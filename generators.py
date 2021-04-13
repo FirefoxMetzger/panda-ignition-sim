@@ -4,7 +4,6 @@ from typing import List
 from numpy.typing import ArrayLike
 import random
 from scipy.spatial.transform import Rotation
-from scipy.spatial import KDTree
 
 @dataclass()
 class Cube:
@@ -17,10 +16,6 @@ class Cube:
 class Environment:
     cubes: List[Cube]
     control_points: ArrayLike
-    kdtree: KDTree = field(init=False)
-
-    def __post_init__(self):
-        self.kdtree = KDTree(self.control_points)
 
 
 
