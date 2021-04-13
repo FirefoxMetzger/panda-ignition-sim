@@ -41,7 +41,7 @@ class LinearJointSpacePlanner:
         )
 
         ik.initialize(
-            verbosity=1,
+            verbosity=0,
             floating_base=False,
             cost_tolerance=1e-8,
             constraints_tolerance=1e-8,

@@ -38,8 +38,9 @@ for row in env_metadata.iterrows():
         # initialize a new numpy array to store the state-space trajectory
         # initialize a new numpy array to store the planning-space trajectory
         for trajectory_index in range(num_trajectories_per_goal):
-            if trajectory_index in goal_trajectories:
+            if trajectory_index in goal_trajectories.trajectory_idx:
                 print(f"--- SKIPPING env {env_idx}, goal {goal_idx}, traj {trajectory_index}")
+                continue
             # save the trajectory into a numpy array
 
             # execute the trajectory and record

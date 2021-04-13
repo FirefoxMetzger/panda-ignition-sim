@@ -7,7 +7,7 @@ import generators
 
 num_environments = 10
 num_random_trajectories = 1
-num_trajectories_per_goal = 1
+num_trajectories_per_goal = 10
 
 dataset_root = Path(__file__).parents[0] / "dataset"
 env_file_name = "environment.pkl"
