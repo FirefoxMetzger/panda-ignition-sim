@@ -81,6 +81,14 @@ with LegibilitySimulator(
     goal_px = simulator.in_px_coordinates(simulator.cubes[goal_idx].base_position())
     ax.add_patch(Circle(goal_px, radius=10, color="red"))
 
+    cubes_world = np.stack([cube.base_position() for cube in simulator.cubes])
+    np.save(env_root / "world_cube_position.npy", cubes_world)
+    cubes_cam = np.stack([simulator.in_px_coordinates(pos) for pos in cubes_world])
+    np.save(env_root / "camera_cube_position.npy", cubes_cam)
+    cubes_joint = np.stack([simulator.panda.solve_ik(position=pos) for pos in cubes_world])
+    np.save(env_root / "joint_cube_position.npy", cubes_joint)
+
+    # uncomment to show the GUI
     # simulator.gui()
     simulator.prepare_goal_trajectory(goal_idx, via_point_idx=trajectory_row.iloc[0]["viaPointIdx"])
     with ign.Subscriber("/camera", parser=camera_parser) as camera_topic:
@@ -102,15 +110,15 @@ writer.close()
 
 np.save(
     trajectory_row.iloc[0]["cameraTrajectoryFile"],
-    np.stack(cam_trajectory, axis=0),
+    np.stack(cam_trajectory, axis=0)[None, ...],
 )
 np.save(
     trajectory_row.iloc[0]["worldTrajectoryFile"],
-    np.stack(world_trajectory, axis=0),
+    np.stack(world_trajectory, axis=0)[None, ...],
 )
 np.save(
     trajectory_row.iloc[0]["jointTrajectoryFile"],
-    np.stack(joint_trajectory, axis=0),
+    np.stack(joint_trajectory, axis=0)[None, ...],
 )
 
 # visualize the trajectory
