@@ -17,6 +17,8 @@ def observer1(trajectory, goals):
 dataset_root = Path(__file__).parents[0] / "dataset"
 dataset_root.mkdir(exist_ok=True)
 
+(dataset_root / "ratings").mkdir(exist_ok=True)
+
 env_metadata = pd.read_excel(dataset_root / "environment_metadata.xlsx").set_index("Unnamed: 0")
 trajectory_metadata = pd.read_excel(dataset_root / "trajectory_metadata.xlsx")
 
