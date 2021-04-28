@@ -31,16 +31,11 @@ for env_idx, row in env_metadata.iterrows():
     # load environment
     for goal_idx in range(num_goals):
         goal_trajectories = env_trajectories[env_trajectories.targetGoal == goal_idx]
-        # initialize a new numpy array to store the planning-space trajectory
         for trajectory_index in range(num_trajectories_per_goal):
             if trajectory_index in goal_trajectories.trajectory_idx.values:
                 print(f"--- SKIPPING env {env_idx}, goal {goal_idx}, traj {trajectory_index}")
                 continue
-            # save the trajectory into a numpy array
 
-            # execute the trajectory and record
-            # - frames (video)
-            # - endeffector position in camera/world/state/planning space
             call(["python3", "sim_runner.py", str(env_idx), str(goal_idx), str(trajectory_index)])
             print(f"--- Done with env {env_idx}, goal {goal_idx}, traj {trajectory_index}")
             
