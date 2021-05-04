@@ -19,3 +19,5 @@
   actual simulation. The script is aware of current progress, will continue
   where it left off if interrupted, and will skip existing runs. Essentially it
   calls `sim_runner.py` in a coordinated fashion.
+- `add_observer_scores.py` A script that computes the attributed legibility
+  scores for each behavior.

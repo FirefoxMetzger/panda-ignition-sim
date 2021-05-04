@@ -39,6 +39,9 @@ for env_idx in range(num_environments):
         (environment_root).as_posix(),
         (environment_root / "environment.pkl").as_posix(),
     ]
+
+env_metadata.loc[0, "TrajectoriesPerGoal"] = 100
+
 env_metadata.to_excel(dataset_root / "environment_metadata.xlsx")
 
 trajectory_metadata = pd.DataFrame(
